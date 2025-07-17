@@ -226,44 +226,44 @@ int init_vl53l1x_sensor(uint8_t addr) {
 
 // Функция для инициализации VL53L5CX
 int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
-    uint8_t isAlive, status;
-    
-    // Выделяем память для конфигурации VL53L5CX
-    VL53L5CX_Configuration *config = malloc(sizeof(VL53L5CX_Configuration));
-    if (!config) {
-        printf("Failed to allocate memory for VL53L5CX configuration\n");
-        return -1;
-    }
-    
-    // Инициализируем конфигурацию нулями
-    memset(config, 0, sizeof(VL53L5CX_Configuration));
-    
-    // Настройка платформы
-    config->platform.address = addr;
-    config->platform.fd = open("/dev/i2c-1", O_RDONLY);
-    printf("config->platform.address: 0x%02X\n", config->platform.address);
-    
-    // Проверка наличия датчика
-    status = vl53l5cx_is_alive(config, &isAlive);
-    if (!isAlive || status) {
-        printf("VL53L5CX not detected at address 0x%02X\n", addr);
-        free(config);
-        return -1;
-    }
-    
-    // Инициализация датчика
-    status = vl53l5cx_init(config);
-    if (status) {
-        printf("VL53L5CX ULD Loading failed: %d\n", status);
-        free(config);
-        return -1;
-    }
-    
-    // Сохраняем указатель на конфигурацию
-    sensor_config->sensor_config = config;
-    
-    printf("VL53L5CX initialized successfully at address 0x%02X\n", addr);
-    return 0;
+  uint8_t isAlive, status;
+
+  // Выделяем память для конфигурации VL53L5CX
+  VL53L5CX_Configuration *config = malloc(sizeof(VL53L5CX_Configuration));
+  if (!config) {
+    printf("Failed to allocate memory for VL53L5CX configuration\n");
+    return -1;
+  }
+
+  // Инициализируем конфигурацию нулями
+  memset(config, 0, sizeof(VL53L5CX_Configuration));
+
+  // Настройка платформы
+  config->platform.address = addr;
+  config->platform.fd = open("/dev/i2c-1", O_RDONLY);
+  printf("config->platform.address: %d\n", config->platform.address);
+
+  // Проверка наличия датчика
+  status = vl53l5cx_is_alive(config, &isAlive);
+  if (!isAlive || status) {
+    printf("VL53L5CX not detected at address 0x%02X\n", addr);
+    free(config);
+    return -1;
+  }
+
+  // Инициализация датчика
+  status = vl53l5cx_init(config);
+  if (status) {
+    printf("VL53L5CX ULD Loading failed: %d\n", status);
+    free(config);
+    return -1;
+  }
+
+  // Сохраняем указатель на конфигурацию
+  sensor_config->sensor_config = config;
+
+  printf("VL53L5CX initialized successfully at address 0x%02X\n", addr);
+  return 0;
 }
 
 int init_gpio(SensorConfig *configs, int sensor_count) {
@@ -298,140 +298,145 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         }
     }
 
-    // Сначала все пины XSHUT устанавливаем в LOW (выключаем все датчики)
-    for (int i = 0; i < sensor_count; i++) {
-        pinMode(configs[i].xshut_pin, OUTPUT);
-        digitalWrite(configs[i].xshut_pin, LOW);
-        configs[i].initialized = 0;
-        configs[i].sensor_config = NULL; // Инициализируем указатель на конфигурацию
-        configs[i].shm_fd = -1;
-        configs[i].shm_ptr = NULL;
-    }
-    
-    // Ждем немного для стабилизации
-    delay(100);
-    
-    // Теперь включаем датчики по одному и проверяем их
-    for (int i = 0; i < sensor_count; i++) {
-        printf("Checking sensor %d (pin %d, addr 0x%02X)...\n", 
-               i, configs[i].xshut_pin, configs[i].i2c_addr);
-        
-        // Включаем текущий датчик
-        digitalWrite(configs[i].xshut_pin, HIGH);
-        delay(100); // Ждем загрузки датчика
-        
-        // Проверяем стандартный адрес 0x29 (0x52 в 7-bit формате)
-        if (check_i2c_device(0x29) == 0) {
-            printf("Found sensor at default address 0x29\n");
-            
-            // Инициализируем датчик в зависимости от типа
-            int init_status = -1;
-            switch (configs[i].type) {
-                case SENSOR_VL53L1X:
-                    init_status = init_vl53l1x_sensor(0x52);
-                    if (init_status == 0) {
-                        // Меняем адрес на нужный
-                        if (configs[i].i2c_addr != 0x29) {
-                            init_status = VL53L1X_SetI2CAddress(0x52, configs[i].i2c_addr);
-                            if (init_status == 0) {
-                                printf("VL53L1X address changed to 0x%02X\n", configs[i].i2c_addr);
-                                // Создаем shared memory для датчика
-                                if (create_shared_memory(&configs[i]) == 0) {
-                                    configs[i].initialized = 1;
-                                } else {
-                                    printf("Failed to create shared memory for sensor %d\n", i);
-                                }
-                            } else {
-                                printf("Failed to change VL53L1X address\n");
-                            }
-                        } else {
-                            // Создаем shared memory для датчика
-                            if (create_shared_memory(&configs[i]) == 0) {
-                                configs[i].initialized = 1;
-                            } else {
-                                printf("Failed to create shared memory for sensor %d\n", i);
-                            }
-                        }
-                    }
-                    break;
-                    
-                case SENSOR_VL53L5CX:
-                    printf("init_vl53l5cx_sensor(0x29, &configs[%d])\n", i);
-                    init_status = init_vl53l5cx_sensor(0x29, &configs[i]);
-                    if (init_status == 0) {
-                        // Меняем адрес на нужный
-                        if (configs[i].i2c_addr != 0x29) {
-                            VL53L5CX_Configuration *config = (VL53L5CX_Configuration*)configs[i].sensor_config;
-                            init_status = vl53l5cx_set_i2c_address(config, configs[i].i2c_addr);
-                            if (init_status == 0) {
-                                printf("VL53L5CX address changed to 0x%02X\n", configs[i].i2c_addr);
-                                configs[i].initialized = 1;
-                            } else {
-                                printf("Failed to change VL53L5CX address\n");
-                            }
-                        } else {
-                            // Создаем shared memory для датчика
-                            if (create_shared_memory(&configs[i]) == 0) {
-                                configs[i].initialized = 1;
-                            } else {
-                                printf("Failed to create shared memory for sensor %d\n", i);
-                            }
-                        }
-                    }
-                    break;
-                    
-                case SENSOR_TCS34725:
-                    // TODO: Реализовать для TCS34725
-                    printf("TCS34725 initialization not implemented yet\n");
-                    break;
-            }
-        } else {
-            // Проверяем, может датчик уже на нужном адресе
-            if (check_i2c_device(configs[i].i2c_addr) == 0) {
-                printf("Sensor already at target address 0x%02X\n", configs[i].i2c_addr);
-                
-                // Проверяем, что датчик работает
-                int init_status = -1;
-                switch (configs[i].type) {
-                    case SENSOR_VL53L1X:
-                        init_status = init_vl53l1x_sensor(configs[i].i2c_addr);
-                        break;
-                    case SENSOR_VL53L5CX:
-                        init_status = init_vl53l5cx_sensor(configs[i].i2c_addr, &configs[i]);
-                        break;
-                    case SENSOR_TCS34725:
-                        // TODO: Реализовать для TCS34725
-                        break;
-                }
-                
-                if (init_status == 0) {
-                    // Создаем shared memory для датчика
-                    if (create_shared_memory(&configs[i]) == 0) {
-                        configs[i].initialized = 1;
-                    } else {
-                        printf("Failed to create shared memory for sensor %d\n", i);
-                    }
-                }
+  // Сначала все пины XSHUT устанавливаем в LOW (выключаем все датчики)
+  for (int i = 0; i < sensor_count; i++) {
+    pinMode(configs[i].xshut_pin, OUTPUT);
+    digitalWrite(configs[i].xshut_pin, LOW);
+    configs[i].initialized = 0;
+    configs[i].sensor_config = NULL; // Инициализируем указатель на конфигурацию
+    configs[i].shm_fd = -1;
+    configs[i].shm_ptr = NULL;
+  }
+
+  // Ждем немного для стабилизации
+  delay(100);
+
+  // Теперь включаем датчики по одному и проверяем их
+  for (int i = 0; i < sensor_count; i++) {
+    printf("Checking sensor %d (pin %d, addr 0x%02X)...\n", i,
+           configs[i].xshut_pin, configs[i].i2c_addr);
+
+    // Включаем текущий датчик
+    digitalWrite(configs[i].xshut_pin, HIGH);
+    delay(100); // Ждем загрузки датчика
+
+    // Проверяем стандартный адрес 0x29 (0x52 в 7-bit формате)
+    if (check_i2c_device(0x29) == 0) {
+      printf("Found sensor at default address 0x29\n");
+
+      // Инициализируем датчик в зависимости от типа
+      int init_status = -1;
+      switch (configs[i].type) {
+      case SENSOR_VL53L1X:
+        init_status = init_vl53l1x_sensor(0x52);
+        if (init_status == 0) {
+          // Меняем адрес на нужный
+          if (configs[i].i2c_addr != 0x29) {
+            init_status = VL53L1X_SetI2CAddress(0x52, configs[i].i2c_addr);
+            if (init_status == 0) {
+              printf("VL53L1X address changed to 0x%02X\n",
+                     configs[i].i2c_addr);
+              // Создаем shared memory для датчика
+              if (create_shared_memory(&configs[i]) == 0) {
+                configs[i].initialized = 1;
+              } else {
+                printf("Failed to create shared memory for sensor %d\n", i);
+              }
             } else {
-                printf("No sensor found for configuration %d\n", i);
+              printf("Failed to change VL53L1X address\n");
             }
+          } else {
+            // Создаем shared memory для датчика
+            if (create_shared_memory(&configs[i]) == 0) {
+              configs[i].initialized = 1;
+            } else {
+              printf("Failed to create shared memory for sensor %d\n", i);
+            }
+          }
         }
-        
-        // Выключаем датчик перед проверкой следующего
-        digitalWrite(configs[i].xshut_pin, LOW);
-        delay(50);
-    }
-    
-    // Включаем все инициализированные датчики
-    for (int i = 0; i < sensor_count; i++) {
-        if (configs[i].initialized) {
-            digitalWrite(configs[i].xshut_pin, HIGH);
-            printf("Sensor %d enabled (pin %d, addr 0x%02X)\n", 
-                   i, configs[i].xshut_pin, configs[i].i2c_addr);
+        break;
+
+      case SENSOR_VL53L5CX:
+        printf("init_vl53l5cx_sensor(0x%02X, &configs[%d])\n",
+               configs[i].i2c_addr, i);
+        init_status = init_vl53l5cx_sensor(0x29 << 1, &configs[i]);
+        if (init_status == 0) {
+          // Меняем адрес на нужный
+          if (configs[i].i2c_addr != 0x29) {
+            VL53L5CX_Configuration *config =
+                (VL53L5CX_Configuration *)configs[i].sensor_config;
+            init_status = vl53l5cx_set_i2c_address(config, configs[i].i2c_addr);
+            if (init_status == 0) {
+              printf("VL53L5CX address changed to 0x%02X\n",
+                     configs[i].i2c_addr);
+              configs[i].initialized = 1;
+            } else {
+              printf("Failed to change VL53L5CX address\n");
+            }
+          } else {
+            // Создаем shared memory для датчика
+            if (create_shared_memory(&configs[i]) == 0) {
+              configs[i].initialized = 1;
+            } else {
+              printf("Failed to create shared memory for sensor %d\n", i);
+            }
+          }
         }
+        break;
+
+      case SENSOR_TCS34725:
+        // TODO: Реализовать для TCS34725
+        printf("TCS34725 initialization not implemented yet\n");
+        break;
+      }
+    } else {
+      // Проверяем, может датчик уже на нужном адресе
+      if (check_i2c_device(configs[i].i2c_addr) == 0) {
+        printf("Sensor already at target address 0x%02X\n",
+               configs[i].i2c_addr);
+
+        // Проверяем, что датчик работает
+        int init_status = -1;
+        switch (configs[i].type) {
+        case SENSOR_VL53L1X:
+          init_status = init_vl53l1x_sensor(configs[i].i2c_addr);
+          break;
+        case SENSOR_VL53L5CX:
+          init_status = init_vl53l5cx_sensor(configs[i].i2c_addr, &configs[i]);
+          break;
+        case SENSOR_TCS34725:
+          // TODO: Реализовать для TCS34725
+          break;
+        }
+
+        if (init_status == 0) {
+          // Создаем shared memory для датчика
+          if (create_shared_memory(&configs[i]) == 0) {
+            configs[i].initialized = 1;
+          } else {
+            printf("Failed to create shared memory for sensor %d\n", i);
+          }
+        }
+      } else {
+        printf("No sensor found for configuration %d\n", i);
+      }
     }
-    
-    return 0;
+
+    // Выключаем датчик перед проверкой следующего
+    digitalWrite(configs[i].xshut_pin, LOW);
+    delay(50);
+  }
+
+  // Включаем все инициализированные датчики
+  for (int i = 0; i < sensor_count; i++) {
+    if (configs[i].initialized) {
+      digitalWrite(configs[i].xshut_pin, HIGH);
+      printf("Sensor %d enabled (pin %d, addr 0x%02X)\n", i,
+             configs[i].xshut_pin, configs[i].i2c_addr);
+    }
+  }
+
+  return 0;
 }
 
 // Функция для остановки всех датчиков
