@@ -361,7 +361,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         break;
 
       case SENSOR_VL53L5CX:
-        init_status = init_vl53l5cx_sensor(0x52, &configs[i]);
+        init_status = init_vl53l5cx_sensor(0x29, &configs[i]);
         if (init_status == 0) {
           // Меняем адрес на нужный
           if (configs[i].i2c_addr != 0x29) {
