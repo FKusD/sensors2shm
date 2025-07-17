@@ -396,10 +396,10 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         int init_status = -1;
         switch (configs[i].type) {
         case SENSOR_VL53L1X:
-          init_status = init_vl53l1x_sensor(configs[i].i2c_addr);
+          init_status = init_vl53l1x_sensor(configs[i].i2c_addr << 1);
           break;
         case SENSOR_VL53L5CX:
-          init_status = init_vl53l5cx_sensor(configs[i].i2c_addr, &configs[i]);
+          init_status = init_vl53l5cx_sensor(configs[i].i2c_addr << 1, &configs[i]);
           break;
         case SENSOR_TCS34725:
           // TODO: Реализовать для TCS34725
@@ -544,6 +544,8 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       if (vl53l5cx_get_resolution(vl53l5cx_config, &resolution) != 0) {
         resolution = 16; // По умолчанию 4x4
       }
+
+      printf("VL53L5CX: resolution = %d\n", resolution);
 
       // Подготавливаем массивы для матричных данных
       uint16_t distances[64];

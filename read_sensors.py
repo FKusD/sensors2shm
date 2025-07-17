@@ -176,7 +176,8 @@ def main():
     # Можно изменить на нужные имена из sensors_config.txt
     sensor_names = [
         "vl53l1x_left",
-        "vl53l5cx_left"
+        "vl53l5cx_left",
+        "vl53l5cx_right"
     ]
     
     # Интервал обновления (в секундах)
