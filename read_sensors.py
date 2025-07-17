@@ -131,6 +131,7 @@ class SensorReader:
                 print(f"{shm_name}: Недостаточно данных для распаковки (ожидалось {data_size}, получено {len(data)})")
                 return None
             if len(data) == data_size:
+                print(f"{shm_name}: RAW HEADER {data[:16].hex()}")
                 return SensorData(data)
             else:
                 return None

@@ -542,13 +542,13 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       // Получаем текущее разрешение
       uint8_t resolution;
       if (vl53l5cx_get_resolution(vl53l5cx_config, &resolution) != 0) {
-        if (resolution == 0) {
-          printf("Warning: resolution==0, пропуск записи в shared memory\\n");
-          return -1;
-        }
-        resolution = 16; // По умолчанию 4x4
+        printf("Warning: vl53l5cx_get_resolution error, пропуск записи\n");
+        return -1;
       }
-
+      if (resolution == 0) {
+        printf("Warning: resolution==0, пропуск записи в shared memory\n");
+        return -1;
+      }
       printf("VL53L5CX: resolution = %d\n", resolution);
 
       // Подготавливаем массивы для матричных данных
