@@ -120,10 +120,16 @@ class SensorReader:
                 data_size = 16  # 8 байт заголовка + 8 байт данных
             else:  # Матричное измерение
                 data_size = 8 + resolution * 3  # 8 байт заголовка + resolution*2 (distances) + resolution (statuses)
-            
+                if resolution == 0:
+                    print(f"{shm_name}: Некорректное разрешение (0), пропуск чтения")
+                    return None
+
             # Читаем полные данные
             mmap_obj.seek(0)  # Возвращаемся в начало
             data = mmap_obj.read(data_size)
+            if len(data) != data_size:
+                print(f"{shm_name}: Недостаточно данных для распаковки (ожидалось {data_size}, получено {len(data)})")
+                return None
             if len(data) == data_size:
                 return SensorData(data)
             else:

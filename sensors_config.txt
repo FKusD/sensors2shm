@@ -9,4 +9,4 @@
 l5cx 22 0x34 vl53l5cx_left
 
 # right VL53L5CX
-# l5cx 17 0x35 vl53l5cx_right
+l5cx 17 0x35 vl53l5cx_right
