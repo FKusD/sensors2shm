@@ -11,6 +11,7 @@ import struct
 import signal
 import sys
 from typing import Dict, Optional
+import posix_ipc
 
 # Структура данных датчика (должна соответствовать C структуре)
 class SensorData:
@@ -71,6 +72,15 @@ class SensorReader:
         print(f"\nПолучен сигнал {signum}, завершение программы...")
         self.running = False
     
+    def open_semaphore(self, shm_name: str):
+        sem_name = f"/sem_{shm_name}"
+        try:
+            sem = posix_ipc.Semaphore(sem_name)
+            return sem
+        except Exception as e:
+            print(f"Ошибка открытия семафора {sem_name}: {e}")
+            return None
+    
     def open_shared_memory(self, shm_name: str) -> Optional[tuple]:
         """Открывает shared memory сегмент"""
         try:
@@ -85,7 +95,11 @@ class SensorReader:
             mmap_obj = mmap.mmap(fd, size, mmap.MAP_SHARED, mmap.PROT_READ)
             
             print(f"Открыт shared memory: {shm_name} (размер: {size} байт)")
-            return (fd, mmap_obj)
+            sem = self.open_semaphore(shm_name)
+            if not sem:
+                os.close(fd)
+                return None
+            return (fd, mmap_obj, sem)
             
         except FileNotFoundError:
             print(f"Shared memory не найден: {shm_name}")
@@ -102,12 +116,14 @@ class SensorReader:
                 return None
             self.shm_handles[shm_name] = handle
         
-        fd, mmap_obj = self.shm_handles[shm_name]
+        fd, mmap_obj, sem = self.shm_handles[shm_name]
         
         try:
+            sem.acquire(timeout=1)  # Ждём максимум 1 сек
             # Читаем заголовок для определения размера данных
             header_data = mmap_obj.read(8)
             if len(header_data) < 8:
+                sem.release()
                 return None
             
             # Распаковываем заголовок
@@ -122,6 +138,7 @@ class SensorReader:
                 data_size = 8 + resolution * 3  # 8 байт заголовка + resolution*2 (distances) + resolution (statuses)
                 if resolution == 0:
                     print(f"{shm_name}: Некорректное разрешение (0), пропуск чтения")
+                    sem.release()
                     return None
 
             # Читаем полные данные
@@ -129,22 +146,27 @@ class SensorReader:
             data = mmap_obj.read(data_size)
             if len(data) != data_size:
                 print(f"{shm_name}: Недостаточно данных для распаковки (ожидалось {data_size}, получено {len(data)})")
+                sem.release()
                 return None
             if len(data) == data_size:
                 print(f"{shm_name}: RAW HEADER {data[:16].hex()}")
+                sem.release()
                 return SensorData(data)
             else:
+                sem.release()
                 return None
         except Exception as e:
             print(f"Ошибка чтения {shm_name}: {e}")
+            sem.release()
             return None
     
     def close_shared_memory(self, shm_name: str):
         """Закрывает shared memory сегмент"""
         if shm_name in self.shm_handles:
-            fd, mmap_obj = self.shm_handles[shm_name]
+            fd, mmap_obj, sem = self.shm_handles[shm_name]
             mmap_obj.close()
             os.close(fd)
+            sem.close()
             del self.shm_handles[shm_name]
             print(f"Закрыт shared memory: {shm_name}")
     

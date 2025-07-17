@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <vl53l5cx_api.h>
 #include <wiringPi.h>
+#include <semaphore.h>
 
 
 typedef enum { SENSOR_VL53L1X, SENSOR_VL53L5CX, SENSOR_TCS34725 } SensorType;
@@ -30,6 +31,7 @@ typedef struct {
   // Shared memory дескрипторы
   int shm_fd;
   void *shm_ptr;
+  sem_t *sem; // дескриптор семафора
 } SensorConfig;
 
 // Структура данных датчика в shared memory
@@ -126,6 +128,18 @@ int create_shared_memory(SensorConfig *config) {
 
   printf("Shared memory создан: %s (размер: %zu байт)\n", config->shm_name,
          sizeof(SensorData));
+
+  // Создаем именованный семафор
+  char sem_name[256];
+  snprintf(sem_name, sizeof(sem_name), "/sem_%s", config->shm_name);
+  config->sem = sem_open(sem_name, O_CREAT, 0666, 1); // 1 — начальное значение (разрешено читать)
+  if (config->sem == SEM_FAILED) {
+      perror("sem_open failed");
+      munmap(config->shm_ptr, shm_size);
+      close(config->shm_fd);
+      return -1;
+  }
+
   return 0;
 }
 
@@ -138,6 +152,8 @@ int write_single_to_shm(SensorConfig *config, uint16_t distance,
     return -1;
   }
 
+  sem_wait(config->sem);
+
   SensorData *data = (SensorData *)config->shm_ptr;
 
   // Обновляем данные
@@ -148,6 +164,7 @@ int write_single_to_shm(SensorConfig *config, uint16_t distance,
   data->data.single.distance_mm = distance;
   data->data.single.status = status;
 
+  sem_post(config->sem);
   return 0;
 }
 
@@ -159,6 +176,8 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
            config->shm_name);
     return -1;
   }
+
+  sem_wait(config->sem);
 
   SensorData *data = (SensorData *)config->shm_ptr;
 
@@ -174,6 +193,7 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
     data->data.matrix.statuses[i] = statuses[i];
   }
 
+  sem_post(config->sem);
   return 0;
 }
 
@@ -193,6 +213,15 @@ void close_shared_memory(SensorConfig *config) {
   // Удаляем shared memory сегмент
   shm_unlink(config->shm_name);
   printf("Shared memory закрыт: %s\n", config->shm_name);
+
+  // Закрываем и удаляем семафор
+  char sem_name[256];
+  snprintf(sem_name, sizeof(sem_name), "/sem_%s", config->shm_name);
+  if (config->sem) {
+      sem_close(config->sem);
+      sem_unlink(sem_name);
+      config->sem = NULL;
+  }
 }
 
 // Функция для инициализации VL53L1X
@@ -320,6 +349,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
     configs[i].sensor_config = NULL; // Инициализируем указатель на конфигурацию
     configs[i].shm_fd = -1;
     configs[i].shm_ptr = NULL;
+    configs[i].sem = NULL; // Инициализируем семафор
   }
 
   // Ждем немного для стабилизации
@@ -589,6 +619,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
   return -1;
 }
 
+// delete this
 // Функция для записи данных в файл
 int write_to_file(const char *filename, uint8_t *data, int size) {
   FILE *file = fopen(filename, "wb");
