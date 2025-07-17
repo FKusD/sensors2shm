@@ -264,6 +264,13 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
     return -1;
   }
 
+  status = vl53l5cx_set_resolution(config, 64);
+  if (status) {
+    printf("VL53L5CX resolution set failed: %d\n", status);
+    free(config);
+    return -1;
+  }
+
   // Сохраняем указатель на конфигурацию
   sensor_config->sensor_config = config;
 
@@ -425,13 +432,13 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
   }
 
   // Включаем все инициализированные датчики
-  for (int i = 0; i < sensor_count; i++) {
-    if (configs[i].initialized) {
-      digitalWrite(configs[i].xshut_pin, HIGH);
-      printf("Sensor %d enabled (pin %d, addr 0x%02X)\n", i,
-             configs[i].xshut_pin, configs[i].i2c_addr);
-    }
-  }
+  // for (int i = 0; i < sensor_count; i++) {
+  //   if (configs[i].initialized) {
+  //     digitalWrite(configs[i].xshut_pin, HIGH);
+  //     printf("Sensor %d enabled (pin %d, addr 0x%02X)\n", i,
+  //            configs[i].xshut_pin, configs[i].i2c_addr);
+  //   }
+  // }
 
   return 0;
 }
