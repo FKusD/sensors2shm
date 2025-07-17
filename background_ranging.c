@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 
 typedef enum { 
     SENSOR_VL53L1X,
@@ -61,7 +62,7 @@ typedef struct {
 
 // Глобальные переменные для I2C
 static int i2c_fd = -1;
-static uint16_t current_addr = 0;
+// static uint16_t current_addr = 0;
 
 // Глобальная переменная для отслеживания состояния программы
 static volatile int running = 1;
@@ -625,7 +626,7 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
                   type_str, 
                   &configs[*count].xshut_pin, 
                   &configs[*count].i2c_addr, 
-                  configs[*count].filename) == 4) {
+                  configs[*count].shm_name) == 4) {
 
             // Преобразуем строку в SensorType
             if (strcmp(type_str, "l1x") == 0) {
@@ -640,7 +641,7 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
             }
 
             printf("Loaded config: %s pin=%d addr=0x%02X file=%s\n", 
-                   type_str, configs[*count].xshut_pin, configs[*count].i2c_addr, configs[*count].filename);
+                   type_str, configs[*count].xshut_pin, configs[*count].i2c_addr, configs[*count].shm_name);
             (*count)++;
         } else {
             printf("Warning: Invalid config line: %s\n", trimmed);
