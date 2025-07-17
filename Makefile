@@ -44,8 +44,10 @@ CFLAGS = $(BASE_CFLAGS) $(CFLAGS_RELEASE) $(INCLUDE_PATH)
 
 TARGET = background_ranging
 
-all:
-	$(CC) $(CFLAGS) -o background_ranging ./background_ranging.c $(LIB_SOURCES)
+LIBS = -lwiringPi
 
+all:
 	$(CC) $(CFLAGS) -o background_ranging ./background_ranging.c $(LIB_SOURCES) $(LIBS)
+
+clean:
 	rm -f $(TARGET)
