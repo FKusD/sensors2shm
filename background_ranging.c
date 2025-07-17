@@ -131,7 +131,7 @@ int create_shared_memory(SensorConfig *config) {
 
   // Создаем именованный семафор
   char sem_name[256];
-  snprintf(sem_name, sizeof(sem_name), "/sem_%s", config->shm_name);
+  snprintf(sem_name, sizeof(sem_name), "/sem_%.250s", config->shm_name);
   config->sem = sem_open(sem_name, O_CREAT, 0666, 1); // 1 — начальное значение (разрешено читать)
   if (config->sem == SEM_FAILED) {
       perror("sem_open failed");
@@ -216,7 +216,7 @@ void close_shared_memory(SensorConfig *config) {
 
   // Закрываем и удаляем семафор
   char sem_name[256];
-  snprintf(sem_name, sizeof(sem_name), "/sem_%s", config->shm_name);
+  snprintf(sem_name, sizeof(sem_name), "/sem_%.250s", config->shm_name);
   if (config->sem) {
       sem_close(config->sem);
       sem_unlink(sem_name);
