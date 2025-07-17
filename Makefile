@@ -47,5 +47,5 @@ TARGET = background_ranging
 all:
 	$(CC) $(CFLAGS) -o background_ranging ./background_ranging.c $(LIB_SOURCES)
 
-clean:
+	$(CC) $(CFLAGS) -o background_ranging ./background_ranging.c $(LIB_SOURCES) $(LIBS)
 	rm -f $(TARGET)
