@@ -120,6 +120,7 @@ class SensorReader:
         
         try:
             sem.acquire(timeout=1)  # Ждём максимум 1 сек
+            mmap_obj.seek(0)
             # Читаем заголовок для определения размера данных
             header_data = mmap_obj.read(8)
             if len(header_data) < 8:
