@@ -244,6 +244,8 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
 
   // Настройка платформы
   config->platform.address = addr;
+  config->platform.fd = open("/dev/i2c-1", O_RDONLY);
+  printf("config->platform.address: %d\n", config->platform.address);
 
   // Проверка наличия датчика
   status = vl53l5cx_is_alive(config, &isAlive);
@@ -361,7 +363,9 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         break;
 
       case SENSOR_VL53L5CX:
-        init_status = init_vl53l5cx_sensor(0x29, &configs[i]);
+        printf("init_vl53l5cx_sensor(0x%02X, &configs[%d])\n",
+               configs[i].i2c_addr, i);
+        init_status = init_vl53l5cx_sensor(0x29 << 1, &configs[i]);
         if (init_status == 0) {
           // Меняем адрес на нужный
           if (configs[i].i2c_addr != 0x29) {
