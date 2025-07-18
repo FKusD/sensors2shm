@@ -525,7 +525,7 @@ void stop_all_sensors(SensorConfig *configs, int sensor_count) {
 int read_sensor_data(SensorConfig *config, uint8_t *data) {
   switch (config->type) {
   case SENSOR_VL53L1X: {
-    uint16_t dev = config->i2c_addr << 1;
+    uint8_t dev = config->i2c_addr << 1;
     uint8_t dataReady = 0;
     uint16_t distance = 0;
     uint8_t rangeStatus = 0;
@@ -748,7 +748,7 @@ int main(int argc, char *argv[]) {
     if (configs[i].initialized) {
       switch (configs[i].type) {
       case SENSOR_VL53L1X:
-        VL53L1X_StartRanging(configs[i].i2c_addr);
+        VL53L1X_StartRanging(configs[i].i2c_addr << 1);
         break;
       case SENSOR_VL53L5CX: {
         VL53L5CX_Configuration *config =
