@@ -50,13 +50,24 @@ class SensorData:
         if self.data_format == 0:  # Одиночное измерение
             return f"[{time_str}] {sensor_name}: Distance={self.distance_mm}mm, Status={self.status}"
         else:  # Матричное измерение
-            # Показываем первые несколько значений матрицы
-            matrix_str = f"Matrix {self.resolution} zones: "
-            for i in range(min(4, self.resolution)):
-                matrix_str += f"Zone{i}={self.distances[i]}mm({self.statuses[i]}) "
-            if self.resolution > 4:
-                matrix_str += "..."
-            return f"[{time_str}] {sensor_name}: {matrix_str}"
+            # Полный вывод матрицы (NxN)
+            n = int(self.resolution ** 0.5)
+            if n * n != self.resolution:
+                # Если не квадратная матрица, выводим одной строкой
+                matrix_str = f"Matrix {self.resolution} zones: "
+                for i in range(self.resolution):
+                    matrix_str += f"Zone{i}={self.distances[i]}mm({self.statuses[i]}) "
+                return f"[{time_str}] {sensor_name}: {matrix_str}"
+            else:
+                # Квадратная матрица (например, 8x8)
+                matrix_str = f"Matrix {n}x{n} zones:\n"
+                for row in range(n):
+                    row_str = ""
+                    for col in range(n):
+                        idx = row * n + col
+                        row_str += f"{self.distances[idx]:4d}({self.statuses[idx]}) "
+                    matrix_str += row_str.rstrip() + "\n"
+                return f"[{time_str}] {sensor_name}:\n{matrix_str.rstrip()}"
 
 class SensorReader:
     def __init__(self):
