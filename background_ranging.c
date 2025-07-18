@@ -97,6 +97,14 @@ int check_i2c_device(uint8_t addr) {
 
 // Функция для создания shared memory сегмента
 int create_shared_memory(SensorConfig *config) {
+  // Определяем размер сегмента в зависимости от типа датчика
+  size_t shm_size;
+  if (config->type == SENSOR_VL53L5CX) {
+    shm_size = 8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
+  } else {
+    shm_size = sizeof(SensorData); // Для одиночных датчиков
+  }
+
   // Создаем shared memory сегмент
   config->shm_fd =
       shm_open(config->shm_name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
@@ -105,9 +113,7 @@ int create_shared_memory(SensorConfig *config) {
     return -1;
   }
 
-  // Устанавливаем размер сегмента (максимальный размер для матрицы 8x8)
-  size_t shm_size =
-      8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
+  // Устанавливаем размер сегмента
   if (ftruncate(config->shm_fd, shm_size) == -1) {
     perror("ftruncate failed");
     close(config->shm_fd);
@@ -124,10 +130,10 @@ int create_shared_memory(SensorConfig *config) {
   }
 
   // Инициализируем данные нулями
-  memset(config->shm_ptr, 0, sizeof(SensorData));
+  memset(config->shm_ptr, 0, shm_size);
 
   printf("Shared memory создан: %s (размер: %zu байт)\n", config->shm_name,
-         sizeof(SensorData));
+         shm_size);
 
   // Создаем именованный семафор
   char sem_name[256];
@@ -777,9 +783,12 @@ int main(int argc, char *argv[]) {
             }
           }
         }
+        else {
+          printf("Error reading sensor data for sensor %d\n", i);
+        }
       }
     }
-    delay(100); // Пауза между циклами
+    delay(50); // Пауза между циклами
   }
 
   // Корректное завершение
