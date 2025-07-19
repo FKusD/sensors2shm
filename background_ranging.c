@@ -25,6 +25,10 @@
 #include <wiringPi.h>
 #include <semaphore.h>
 
+// Константы для демона
+#define PID_FILE "/var/run/sensors2shm.pid"
+#define DAEMON_NAME "sensors2shm"
+
 
 typedef enum { SENSOR_VL53L1X, SENSOR_VL53L5CX, SENSOR_TCS34725 } SensorType;
 
@@ -76,9 +80,99 @@ static int i2c_fd = -1;
 // Глобальная переменная для отслеживания состояния программы
 static volatile int running = 1;
 
+// Функция для создания PID файла
+int create_pid_file() {
+    // Проверяем, не запущен ли уже демон
+    FILE *existing_pid = fopen(PID_FILE, "r");
+    if (existing_pid != NULL) {
+        int existing_pid_num;
+        if (fscanf(existing_pid, "%d", &existing_pid_num) == 1) {
+            // Проверяем, существует ли процесс с таким PID
+            if (kill(existing_pid_num, 0) == 0) {
+                fprintf(stderr, "Демон уже запущен с PID %d\n", existing_pid_num);
+                fclose(existing_pid);
+                return -1;
+            }
+        }
+        fclose(existing_pid);
+    }
+    
+    FILE *pid_file = fopen(PID_FILE, "w");
+    if (pid_file == NULL) {
+        fprintf(stderr, "Не удалось создать PID файл\n");
+        return -1;
+    }
+    
+    fprintf(pid_file, "%d\n", getpid());
+    fclose(pid_file);
+    return 0;
+}
+
+// Функция для удаления PID файла
+void remove_pid_file() {
+    unlink(PID_FILE);
+}
+
+// Функция для запуска демона
+int daemonize() {
+    pid_t pid, sid;
+    
+    // Первый fork - отключаемся от родительского процесса
+    pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "Первый fork() не удался\n");
+        return -1;
+    }
+    
+    if (pid > 0) {
+        // Родительский процесс завершается
+        exit(EXIT_SUCCESS);
+    }
+    
+    // Создаем новую сессию
+    sid = setsid();
+    if (sid < 0) {
+        fprintf(stderr, "setsid() не удался\n");
+        return -1;
+    }
+    
+    // Второй fork - отключаемся от терминала
+    pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "Второй fork() не удался\n");
+        return -1;
+    }
+    
+    if (pid > 0) {
+        // Родительский процесс завершается
+        exit(EXIT_SUCCESS);
+    }
+    
+    // Устанавливаем маску прав доступа
+    umask(0);
+    
+    // Переходим в корневую директорию
+    if (chdir("/") < 0) {
+        fprintf(stderr, "chdir() не удался\n");
+        return -1;
+    }
+    
+    // Закрываем все файловые дескрипторы
+    for (int x = sysconf(_SC_OPEN_MAX); x >= 0; x--) {
+        close(x);
+    }
+    
+    // Создаем PID файл
+    if (create_pid_file() != 0) {
+        return -1;
+    }
+    
+    return 0;
+}
+
 // Обработчик сигналов для корректного завершения
 void signal_handler(int sig) {
-  printf("\nПолучен сигнал %d, завершение программы...\n", sig);
+  printf("Получен сигнал %d, завершение демона...\n", sig);
   running = 0;
 }
 
@@ -163,8 +257,7 @@ int create_shared_memory(SensorConfig *config) {
 int write_single_to_shm(SensorConfig *config, uint16_t distance,
                         uint8_t status) {
   if (!config->shm_ptr) {
-    printf("Error: Shared memory не инициализирован для %s\n",
-           config->shm_name);
+    perror("Error: Shared memory не инициализирован для %s");
     return -1;
   }
 
@@ -188,8 +281,7 @@ int write_single_to_shm(SensorConfig *config, uint16_t distance,
 int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
                         uint8_t *statuses, uint8_t resolution) {
   if (!config->shm_ptr) {
-    printf("Error: Shared memory не инициализирован для %s\n",
-           config->shm_name);
+    perror("Error: Shared memory не инициализирован для %s");
     return -1;
   }
 
@@ -250,7 +342,7 @@ int init_vl53l1x_sensor(uint8_t addr) {
   while (sensorState == 0) {
     status = VL53L1X_BootState(dev, &sensorState);
     if (status != 0) {
-      printf("VL53L1X boot state check failed: %d\n", status);
+      perror("VL53L1X boot state check failed");
       return -1;
     }
     VL53L1_WaitMs(dev, 2);
@@ -261,7 +353,7 @@ int init_vl53l1x_sensor(uint8_t addr) {
   // Инициализация сенсора
   status = VL53L1X_SensorInit(dev);
   if (status != 0) {
-    printf("VL53L1X sensor init failed: %d\n", status);
+    perror("VL53L1X sensor init failed");
     return -1;
   }
 
@@ -281,7 +373,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   // Выделяем память для конфигурации VL53L5CX
   VL53L5CX_Configuration *config = malloc(sizeof(VL53L5CX_Configuration));
   if (!config) {
-    printf("Failed to allocate memory for VL53L5CX configuration\n");
+    perror("Failed to allocate memory for VL53L5CX configuration");
     return -1;
   }
 
@@ -296,7 +388,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   // Проверка наличия датчика
   status = vl53l5cx_is_alive(config, &isAlive);
   if (!isAlive || status) {
-    printf("VL53L5CX not detected at address 0x%02X\n", addr);
+    perror("VL53L5CX not detected at address 0x%02X");
     free(config);
     return -1;
   }
@@ -304,14 +396,14 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   // Инициализация датчика
   status = vl53l5cx_init(config);
   if (status) {
-    printf("VL53L5CX ULD Loading failed: %d\n", status);
+    perror("VL53L5CX ULD Loading failed");
     free(config);
     return -1;
   }
 
   status = vl53l5cx_set_resolution(config, 64);
   if (status) {
-    printf("VL53L5CX resolution set failed: %d\n", status);
+    perror("VL53L5CX resolution set failed");
     free(config);
     return -1;
   }
@@ -319,7 +411,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   status = vl53l5cx_set_ranging_frequency_hz(config, 10);
 	if(status)
 	{
-		printf("vl53l5cx_set_ranging_frequency_hz failed, status %u\n", status);
+		perror("vl53l5cx_set_ranging_frequency_hz failed");
 		return status;
 	}
 
@@ -332,7 +424,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
 
 int init_gpio(SensorConfig *configs, int sensor_count) {
   if (wiringPiSetupGpio() == -1) {
-    printf("Error: wiringPi init\n");
+    perror("Error: wiringPi init");
     return -1;
   }
 
@@ -340,15 +432,13 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
   for (int i = 0; i < sensor_count; i++) {
     // Проверяем, что I2C адрес в допустимом диапазоне (0x08-0x77)
     if (configs[i].i2c_addr < 0x08 || configs[i].i2c_addr > 0x77) {
-      printf("Error: Invalid I2C address 0x%02X for sensor %d\n",
-             configs[i].i2c_addr, i);
+      perror("Error: Invalid I2C address 0x%02X for sensor %d");
       return -1;
     }
 
     // Проверяем, что GPIO пин в допустимом диапазоне
     if (configs[i].xshut_pin < 0 || configs[i].xshut_pin > 40) {
-      printf("Error: Invalid GPIO pin %d for sensor %d\n", configs[i].xshut_pin,
-             i);
+      perror("Error: Invalid GPIO pin %d for sensor %d");
       return -1;
     }
   }
@@ -357,8 +447,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
   for (int i = 0; i < sensor_count; i++) {
     for (int j = i + 1; j < sensor_count; j++) {
       if (configs[i].i2c_addr == configs[j].i2c_addr) {
-        printf("Error: Duplicate I2C address 0x%02X for sensors %d and %d\n",
-               configs[i].i2c_addr, i, j);
+        perror("Error: Duplicate I2C address 0x%02X for sensors %d and %d");
         return -1;
       }
     }
@@ -380,7 +469,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
 
   // Теперь включаем датчики по одному и проверяем их
   for (int i = 0; i < sensor_count; i++) {
-    printf("Checking sensor %d (pin %d, addr 0x%02X)...\n", i,
+    printf("Checking sensor %d (pin %d, addr 0x%02X)...", i,
            configs[i].xshut_pin, configs[i].i2c_addr);
 
     // Включаем текущий датчик
@@ -401,7 +490,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
           if (configs[i].i2c_addr != 0x29) {
             init_status = VL53L1X_SetI2CAddress(0x29 << 1, configs[i].i2c_addr << 1);
             if (init_status != 0) {
-              printf("Failed to change VL53L1X address\n");
+              perror("Failed to change VL53L1X address");
               break; // или break, если хотите прервать обработку этого датчика
             }
             printf("VL53L1X address changed to 0x%02X\n", configs[i].i2c_addr);
@@ -410,7 +499,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
           if (create_shared_memory(&configs[i]) == 0) {
             configs[i].initialized = 1;
           } else {
-            printf("Failed to create shared memory for sensor %d\n", i);
+            perror("Failed to create shared memory for sensor %d");
           }
         }
         break;
@@ -427,7 +516,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
             init_status =
                 vl53l5cx_set_i2c_address(config, configs[i].i2c_addr << 1);
             if (init_status != 0) {
-              printf("Failed to change VL53L5CX address\n");
+              perror("Failed to change VL53L5CX address");
               break; // или break, если хотите прервать обработку этого датчика
             }
             printf("VL53L5CX address changed to 0x%02X\n", configs[i].i2c_addr);
@@ -436,7 +525,7 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
           if (create_shared_memory(&configs[i]) == 0) {
             configs[i].initialized = 1;
           } else {
-            printf("Failed to create shared memory for sensor %d\n", i);
+            perror("Failed to create shared memory for sensor %d");
           }
         }
         break;
@@ -471,11 +560,11 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
           if (create_shared_memory(&configs[i]) == 0) {
             configs[i].initialized = 1;
           } else {
-            printf("Failed to create shared memory for sensor %d\n", i);
+            perror("Failed to create shared memory for sensor %d");
           }
         }
       } else {
-        printf("No sensor found for configuration %d\n", i);
+        perror("No sensor found for configuration %d");
       }
     }
 
@@ -549,19 +638,19 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
 
     // Проверяем готовность данных
     if (VL53L1X_CheckForDataReady(dev, &dataReady) != 0) {
-      printf("VL53L1X_CheckForDataReady error\n");
+      perror("VL53L1X_CheckForDataReady error");
       return -1;
     }
 
     if (dataReady) {
       // Получаем статус и расстояние
       if (VL53L1X_GetRangeStatus(dev, &rangeStatus) != 0) {
-        printf("VL53L1X_GetRangeStatus error\n");
+        perror("VL53L1X_GetRangeStatus error");
         return -1;
       }
 
       if (VL53L1X_GetDistance(dev, &distance) != 0) {
-        printf("VL53L1X_GetDistance error\n");
+        perror("VL53L1X_GetDistance error");
         return -1;
       }
 
@@ -587,7 +676,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
         (VL53L5CX_Configuration *)config->sensor_config;
 
     if (!vl53l5cx_config) {
-      printf("Error: VL53L5CX configuration not found\n");
+      perror("Error: VL53L5CX configuration not found");
       return -1;
     }
 
@@ -605,11 +694,11 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       // Получаем текущее разрешение
       uint8_t resolution;
       if (vl53l5cx_get_resolution(vl53l5cx_config, &resolution) != 0) {
-        printf("Warning: vl53l5cx_get_resolution error, пропуск записи\n");
+        fprintf(stderr, "vl53l5cx_get_resolution error, пропуск записи\n");
         return -1;
       }
       if (resolution == 0) {
-        printf("Warning: resolution==0, пропуск записи в shared memory\n");
+        fprintf(stderr, "resolution==0, пропуск записи в shared memory\n");
         return -1;
       }
       printf("VL53L5CX: resolution = %d\n", resolution);
@@ -718,7 +807,7 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
       } else if (strcmp(type_str, "tcs") == 0) {
         configs[*count].type = SENSOR_TCS34725;
       } else {
-        printf("Warning: Unknown sensor type '%s' in line %d, skipping\n",
+        fprintf(stderr, "Unknown sensor type '%s' in line %d, skipping\n",
                type_str, *count + 1);
         continue;
       }
@@ -728,7 +817,7 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
              configs[*count].shm_name);
       (*count)++;
     } else {
-      printf("Warning: Invalid config line: %s\n", trimmed);
+      fprintf(stderr, "Invalid config line: %s\n", trimmed);
     }
   }
 
@@ -741,6 +830,12 @@ int main(int argc, char *argv[]) {
   SensorConfig configs[6];
   int sensor_count = 0;
   uint8_t sensor_data[4];
+  int daemon_mode = 0;
+
+  // Проверяем аргумент для режима демона
+  if (argc > 1 && strcmp(argv[1], "--daemon") == 0) {
+    daemon_mode = 1;
+  }
 
   // Устанавливаем обработчик сигналов для корректного завершения
   signal(SIGINT, signal_handler);  // Ctrl+C
@@ -782,6 +877,17 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // ТЕПЕРЬ запускаем демонизацию ПОСЛЕ инициализации датчиков
+  if (daemon_mode) {
+    printf("Инициализация датчиков завершена. Запуск демона...\n");
+    if (daemonize() != 0) {
+      fprintf(stderr, "Failed to daemonize process\n");
+      stop_all_sensors(configs, sensor_count);
+      return EXIT_FAILURE;
+    }
+    // После демонизации все printf заменяются на syslog
+  }
+
   // main loop
   while (running) {
     for (int i = 0; i < sensor_count; i++) {
@@ -789,22 +895,29 @@ int main(int argc, char *argv[]) {
         if (read_sensor_data(&configs[i], sensor_data) == 0) {
           // Для VL53L5CX данные уже записаны в shared memory в read_sensor_data
           if (configs[i].type == SENSOR_VL53L5CX) {
-            printf("Sensor %d: Matrix data written to shared memory\n", i);
+            if (!daemon_mode) {
+              printf("Sensor %d: Matrix data written to shared memory\n", i);
+            }
           } else {
             // Для других датчиков записываем одиночные данные
             uint16_t distance = (sensor_data[0] << 8) | sensor_data[1];
             uint8_t status = sensor_data[3]; // Берем младший байт статуса
 
             if (write_single_to_shm(&configs[i], distance, status) == 0) {
-              printf("Sensor %d: Distance = %d mm, Status = %d\n", i, distance,
-                     status);
+              if (!daemon_mode) {
+                printf("Sensor %d: Distance = %d mm, Status = %d\n", i, distance, status);
+              }
             } else {
-              printf("Error writing to shared memory for sensor %d\n", i);
+              if (!daemon_mode) {
+                printf("Error writing to shared memory for sensor %d\n", i);
+              }
             }
           }
         }
         else {
-          printf("Error reading sensor data for sensor %d\n", i);
+          if (!daemon_mode) {
+            printf("Error reading sensor data for sensor %d\n", i);
+          }
         }
       }
     }
@@ -813,7 +926,13 @@ int main(int argc, char *argv[]) {
 
   // Корректное завершение
   stop_all_sensors(configs, sensor_count);
-  printf("Программа завершена.\n");
+  
+  // Удаляем PID файл при завершении (только в режиме демона)
+  if (daemon_mode) {
+    remove_pid_file();
+  } else {
+    printf("Программа завершена.\n");
+  }
 
   return EXIT_SUCCESS;
 }
