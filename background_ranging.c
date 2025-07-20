@@ -69,6 +69,14 @@ typedef struct {
       uint16_t distances[64]; // Массив расстояний (максимум 8x8)
       uint8_t statuses[64];   // Массив статусов
     } matrix;
+    struct { // tcs34725
+        uint16_t clear;
+        uint16_t red;
+        uint16_t green;
+        uint16_t blue;
+        uint8_t status;
+        uint8_t reserved;
+    } tcs;
   } data;
 } SensorData;
 
