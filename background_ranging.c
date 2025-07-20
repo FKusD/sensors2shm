@@ -172,7 +172,7 @@ int daemonize() {
 
 // Обработчик сигналов для корректного завершения
 void signal_handler(int sig) {
-  printf("Получен сигнал %d, завершение демона...\n", sig);
+  // В режиме демона не используем printf!
   running = 0;
 }
 
@@ -856,17 +856,19 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, signal_handler);  // Ctrl+C
   signal(SIGTERM, signal_handler); // kill
 
-  printf("Программа запущена. Нажмите Ctrl+C для остановки.\n");
+  if (!daemon_mode) {
+    printf("Программа запущена. Нажмите Ctrl+C для остановки.\n");
+  }
 
   // read config file
   if (read_config("./sensors_config.txt", configs, &sensor_count) != 0) {
-    fprintf(stderr, "Error: cant read config\n");
+    if (!daemon_mode) fprintf(stderr, "Error: cant read config\n");
     return EXIT_FAILURE;
   }
 
   // sensors init
   if (init_gpio(configs, sensor_count) != 0) {
-    fprintf(stderr, "Error: sensors initialization failed\n");
+    if (!daemon_mode) fprintf(stderr, "Error: sensors initialization failed\n");
     return EXIT_FAILURE;
   }
 
@@ -894,15 +896,18 @@ int main(int argc, char *argv[]) {
 
   // ТЕПЕРЬ запускаем демонизацию ПОСЛЕ инициализации датчиков
   if (daemon_mode) {
-    printf("Инициализация датчиков завершена. Запуск демона...\n");
+    // Не используем printf после демонизации!
     if (daemonize() != 0) {
-      fprintf(stderr, "Failed to daemonize process\n");
+      // Можно только лог в файл:
+      FILE *f = fopen("/tmp/daemon_test.log", "a");
+      if (f) { fprintf(f, "Failed to daemonize process\n"); fclose(f); }
       stop_all_sensors(configs, sensor_count);
       return EXIT_FAILURE;
     }
-    // После демонизации все printf заменяются на syslog
     FILE *f = fopen("/tmp/daemon_test.log", "a");
     if (f) { fprintf(f, "Демон стартовал, PID=%d\n", getpid()); fclose(f); }
+  } else {
+    printf("Инициализация датчиков завершена. Запуск демона...\n");
   }
 
   // main loop
@@ -914,7 +919,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < sensor_count; i++) {
       if (configs[i].initialized) {
         if (read_sensor_data(&configs[i], sensor_data) == 0) {
-          // Для VL53L5CX данные уже записаны в shared memory в read_sensor_data
           if (configs[i].type == SENSOR_VL53L5CX) {
             if (!daemon_mode) {
               printf("Sensor %d: Matrix data written to shared memory\n", i);
