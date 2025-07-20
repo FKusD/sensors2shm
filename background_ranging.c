@@ -217,6 +217,13 @@ int create_shared_memory(SensorConfig *config) {
     return -1;
   }
 
+  // Делаем сегмент доступным для всех (чтение/запись)
+  if (fchmod(config->shm_fd, 0666) == -1) {
+    perror("fchmod failed");
+    close(config->shm_fd);
+    return -1;
+  }
+
   // Устанавливаем размер сегмента
   if (ftruncate(config->shm_fd, shm_size) == -1) {
     perror("ftruncate failed");
