@@ -901,10 +901,16 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
     // После демонизации все printf заменяются на syslog
+    FILE *f = fopen("/tmp/daemon_test.log", "a");
+    if (f) { fprintf(f, "Демон стартовал, PID=%d\n", getpid()); fclose(f); }
   }
 
   // main loop
   while (running) {
+    if (daemon_mode) {
+        FILE *f = fopen("/tmp/daemon_test.log", "a");
+        if (f) { fprintf(f, "Цикл жив, PID=%d\n", getpid()); fclose(f); }
+    }
     for (int i = 0; i < sensor_count; i++) {
       if (configs[i].initialized) {
         if (read_sensor_data(&configs[i], sensor_data) == 0) {
