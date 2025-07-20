@@ -257,6 +257,14 @@ int create_shared_memory(SensorConfig *config) {
       return -1;
   }
 
+  // Делаем семафор доступным для всех (чтение/запись)
+  char sem_path[300];
+  snprintf(sem_path, sizeof(sem_path), "/dev/shm/sem.%s", sem_name + 1); // убираем первый символ '/'
+  if (chmod(sem_path, 0666) == -1) {
+      perror("chmod sem failed");
+      // не критично, можно продолжать, но выведем ошибку
+  }
+
   return 0;
 }
 
