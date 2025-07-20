@@ -26,7 +26,7 @@
 #include <semaphore.h>
 
 // Константы для демона
-#define PID_FILE "/var/run/sensors2shm.pid"
+#define PID_FILE "/run/sensors2shm.pid"
 #define DAEMON_NAME "sensors2shm"
 
 
@@ -157,10 +157,10 @@ int daemonize() {
         return -1;
     }
     
-    // Закрываем все файловые дескрипторы
-    for (int x = sysconf(_SC_OPEN_MAX); x >= 0; x--) {
-        close(x);
-    }
+    // Закрываем только стандартные потоки
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
     
     // Создаем PID файл
     if (create_pid_file() != 0) {
