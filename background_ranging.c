@@ -116,12 +116,10 @@ void remove_pid_file() {
 // Функция для запуска демона
 int daemonize() {
     pid_t pid, sid;
-    FILE *f = fopen("/tmp/daemon_test.log", "a");
 
     // Первый fork
     pid = fork();
     if (pid < 0) {
-        if (f) { fprintf(f, "daemonize: Первый fork() не удался\n"); fclose(f); }
         return -1;
     }
     if (pid > 0) exit(EXIT_SUCCESS);
@@ -129,14 +127,12 @@ int daemonize() {
     // setsid
     sid = setsid();
     if (sid < 0) {
-        if (f) { fprintf(f, "daemonize: setsid() не удался\n"); fclose(f); }
         return -1;
     }
 
     // Второй fork
     pid = fork();
     if (pid < 0) {
-        if (f) { fprintf(f, "daemonize: Второй fork() не удался\n"); fclose(f); }
         return -1;
     }
     if (pid > 0) exit(EXIT_SUCCESS);
@@ -146,7 +142,6 @@ int daemonize() {
 
     // chdir
     if (chdir("/") < 0) {
-        if (f) { fprintf(f, "daemonize: chdir() не удался\n"); fclose(f); }
         return -1;
     }
 
@@ -157,11 +152,8 @@ int daemonize() {
 
     // Создание PID файла
     if (create_pid_file() != 0) {
-        if (f) { fprintf(f, "daemonize: create_pid_file() не удался\n"); fclose(f); }
         return -1;
     }
-
-    if (f) { fprintf(f, "daemonize: Успех, PID=%d\n", getpid()); fclose(f); }
     return 0;
 }
 
@@ -893,24 +885,15 @@ int main(int argc, char *argv[]) {
   if (daemon_mode) {
     // Не используем printf после демонизации!
     if (daemonize() != 0) {
-      // Можно только лог в файл:
-      FILE *f = fopen("/tmp/daemon_test.log", "a");
-      if (f) { fprintf(f, "Failed to daemonize process\n"); fclose(f); }
       stop_all_sensors(configs, sensor_count);
       return EXIT_FAILURE;
     }
-    FILE *f = fopen("/tmp/daemon_test.log", "a");
-    if (f) { fprintf(f, "Демон стартовал, PID=%d\n", getpid()); fclose(f); }
   } else {
     printf("Инициализация датчиков завершена. Запуск демона...\n");
   }
 
   // main loop
   while (running) {
-    if (daemon_mode) {
-        FILE *f = fopen("/tmp/daemon_test.log", "a");
-        if (f) { fprintf(f, "Цикл жив, PID=%d\n", getpid()); fclose(f); }
-    }
     for (int i = 0; i < sensor_count; i++) {
       if (configs[i].initialized) {
         if (read_sensor_data(&configs[i], sensor_data) == 0) {
