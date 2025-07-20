@@ -116,57 +116,52 @@ void remove_pid_file() {
 // Функция для запуска демона
 int daemonize() {
     pid_t pid, sid;
-    
-    // Первый fork - отключаемся от родительского процесса
+    FILE *f = fopen("/tmp/daemon_test.log", "a");
+
+    // Первый fork
     pid = fork();
     if (pid < 0) {
-        fprintf(stderr, "Первый fork() не удался\n");
+        if (f) { fprintf(f, "daemonize: Первый fork() не удался\n"); fclose(f); }
         return -1;
     }
-    
-    if (pid > 0) {
-        // Родительский процесс завершается
-        exit(EXIT_SUCCESS);
-    }
-    
-    // Создаем новую сессию
+    if (pid > 0) exit(EXIT_SUCCESS);
+
+    // setsid
     sid = setsid();
     if (sid < 0) {
-        fprintf(stderr, "setsid() не удался\n");
+        if (f) { fprintf(f, "daemonize: setsid() не удался\n"); fclose(f); }
         return -1;
     }
-    
-    // Второй fork - отключаемся от терминала
+
+    // Второй fork
     pid = fork();
     if (pid < 0) {
-        fprintf(stderr, "Второй fork() не удался\n");
+        if (f) { fprintf(f, "daemonize: Второй fork() не удался\n"); fclose(f); }
         return -1;
     }
-    
-    if (pid > 0) {
-        // Родительский процесс завершается
-        exit(EXIT_SUCCESS);
-    }
-    
-    // Устанавливаем маску прав доступа
+    if (pid > 0) exit(EXIT_SUCCESS);
+
+    // umask
     umask(0);
-    
-    // Переходим в корневую директорию
+
+    // chdir
     if (chdir("/") < 0) {
-        fprintf(stderr, "chdir() не удался\n");
+        if (f) { fprintf(f, "daemonize: chdir() не удался\n"); fclose(f); }
         return -1;
     }
-    
-    // Закрываем только стандартные потоки
+
+    // Закрываем потоки
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
-    
-    // Создаем PID файл
+
+    // Создание PID файла
     if (create_pid_file() != 0) {
+        if (f) { fprintf(f, "daemonize: create_pid_file() не удался\n"); fclose(f); }
         return -1;
     }
-    
+
+    if (f) { fprintf(f, "daemonize: Успех, PID=%d\n", getpid()); fclose(f); }
     return 0;
 }
 
