@@ -6,10 +6,10 @@
 l1x 17 0x32 vl53l1x_left
 
 # right l1x
-l1x 22 0x33 vl53l1x_right
+#l1x 22 0x33 vl53l1x_right
 
 # Левый VL53L5CX датчик  
-#l5cx 22 0x34 vl53l5cx_left
+l5cx 22 0x34 vl53l5cx_left
 
 # right VL53L5CX
-#l5cx 17 0x35 vl53l5cx_right
+l5cx 23 0x35 vl53l5cx_right

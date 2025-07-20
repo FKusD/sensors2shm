@@ -1,16 +1,17 @@
 
-#define VL53L5CX_DISABLE_AMBIENT_PER_SPAD
-#define VL53L5CX_DISABLE_NB_SPADS_ENABLED
-#define VL53L5CX_DISABLE_NB_TARGET_DETECTED
-#define VL53L5CX_DISABLE_SIGNAL_PER_SPAD
-#define VL53L5CX_DISABLE_RANGE_SIGMA_MM
+// #define VL53L5CX_DISABLE_AMBIENT_PER_SPAD
+// #define VL53L5CX_DISABLE_NB_SPADS_ENABLED
+// #define VL53L5CX_DISABLE_NB_TARGET_DETECTED
+// #define VL53L5CX_DISABLE_SIGNAL_PER_SPAD
+// #define VL53L5CX_DISABLE_RANGE_SIGMA_MM
 // #define VL53L5CX_DISABLE_DISTANCE_MM
-#define VL53L5CX_DISABLE_REFLECTANCE_PERCENT
+// #define VL53L5CX_DISABLE_REFLECTANCE_PERCENT
 // #define VL53L5CX_DISABLE_TARGET_STATUS
-#define VL53L5CX_DISABLE_MOTION_INDICATOR
+// #define VL53L5CX_DISABLE_MOTION_INDICATOR
 #include <VL53L1X_api.h>
 #include <fcntl.h>
 #include <linux/i2c-dev.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,12 +24,10 @@
 #include <unistd.h>
 #include <vl53l5cx_api.h>
 #include <wiringPi.h>
-#include <semaphore.h>
 
 // Константы для демона
 #define PID_FILE "/run/sensors2shm.pid"
 #define DAEMON_NAME "sensors2shm"
-
 
 typedef enum { SENSOR_VL53L1X, SENSOR_VL53L5CX, SENSOR_TCS34725 } SensorType;
 
@@ -82,79 +81,79 @@ static volatile int running = 1;
 
 // Функция для создания PID файла
 int create_pid_file() {
-    // Проверяем, не запущен ли уже демон
-    FILE *existing_pid = fopen(PID_FILE, "r");
-    if (existing_pid != NULL) {
-        int existing_pid_num;
-        if (fscanf(existing_pid, "%d", &existing_pid_num) == 1) {
-            // Проверяем, существует ли процесс с таким PID
-            if (kill(existing_pid_num, 0) == 0) {
-                fprintf(stderr, "Демон уже запущен с PID %d\n", existing_pid_num);
-                fclose(existing_pid);
-                return -1;
-            }
-        }
+  // Проверяем, не запущен ли уже демон
+  FILE *existing_pid = fopen(PID_FILE, "r");
+  if (existing_pid != NULL) {
+    int existing_pid_num;
+    if (fscanf(existing_pid, "%d", &existing_pid_num) == 1) {
+      // Проверяем, существует ли процесс с таким PID
+      if (kill(existing_pid_num, 0) == 0) {
+        fprintf(stderr, "Демон уже запущен с PID %d\n", existing_pid_num);
         fclose(existing_pid);
-    }
-    
-    FILE *pid_file = fopen(PID_FILE, "w");
-    if (pid_file == NULL) {
-        fprintf(stderr, "Не удалось создать PID файл\n");
         return -1;
+      }
     }
-    
-    fprintf(pid_file, "%d\n", getpid());
-    fclose(pid_file);
-    return 0;
+    fclose(existing_pid);
+  }
+
+  FILE *pid_file = fopen(PID_FILE, "w");
+  if (pid_file == NULL) {
+    fprintf(stderr, "Не удалось создать PID файл\n");
+    return -1;
+  }
+
+  fprintf(pid_file, "%d\n", getpid());
+  fclose(pid_file);
+  return 0;
 }
 
 // Функция для удаления PID файла
-void remove_pid_file() {
-    unlink(PID_FILE);
-}
+void remove_pid_file() { unlink(PID_FILE); }
 
 // Функция для запуска демона
 int daemonize() {
-    pid_t pid, sid;
+  pid_t pid, sid;
 
-    // Первый fork
-    pid = fork();
-    if (pid < 0) {
-        return -1;
-    }
-    if (pid > 0) exit(EXIT_SUCCESS);
+  // Первый fork
+  pid = fork();
+  if (pid < 0) {
+    return -1;
+  }
+  if (pid > 0)
+    exit(EXIT_SUCCESS);
 
-    // setsid
-    sid = setsid();
-    if (sid < 0) {
-        return -1;
-    }
+  // setsid
+  sid = setsid();
+  if (sid < 0) {
+    return -1;
+  }
 
-    // Второй fork
-    pid = fork();
-    if (pid < 0) {
-        return -1;
-    }
-    if (pid > 0) exit(EXIT_SUCCESS);
+  // Второй fork
+  pid = fork();
+  if (pid < 0) {
+    return -1;
+  }
+  if (pid > 0)
+    exit(EXIT_SUCCESS);
 
-    // umask
-    umask(0);
+  // umask
+  umask(0);
 
-    // chdir
-    if (chdir("/") < 0) {
-        return -1;
-    }
+  // chdir
+  if (chdir("/") < 0) {
+    return -1;
+  }
 
-    // Закрываем потоки
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
+  // Закрываем потоки
+  close(STDIN_FILENO);
+  close(STDOUT_FILENO);
+  close(STDERR_FILENO);
 
-    // Создание PID файла
-    if (create_pid_file() != 0) {
-        return -1;
-    }
-    return 0;
+  // Создание PID файла
+  if (create_pid_file() != 0) {
+    return -1;
+  }
+  return 0;
 }
 
 // Обработчик сигналов для корректного завершения
@@ -191,7 +190,8 @@ int create_shared_memory(SensorConfig *config) {
   // Определяем размер сегмента в зависимости от типа датчика
   size_t shm_size;
   if (config->type == SENSOR_VL53L5CX) {
-    shm_size = 8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
+    shm_size =
+        8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
@@ -236,20 +236,22 @@ int create_shared_memory(SensorConfig *config) {
   // Создаем именованный семафор
   char sem_name[256];
   snprintf(sem_name, sizeof(sem_name), "/sem_%.250s", config->shm_name);
-  config->sem = sem_open(sem_name, O_CREAT, 0666, 1); // 1 — начальное значение (разрешено читать)
+  config->sem = sem_open(sem_name, O_CREAT, 0666,
+                         1); // 1 — начальное значение (разрешено читать)
   if (config->sem == SEM_FAILED) {
-      perror("sem_open failed");
-      munmap(config->shm_ptr, shm_size);
-      close(config->shm_fd);
-      return -1;
+    perror("sem_open failed");
+    munmap(config->shm_ptr, shm_size);
+    close(config->shm_fd);
+    return -1;
   }
 
   // Делаем семафор доступным для всех (чтение/запись)
   char sem_path[300];
-  snprintf(sem_path, sizeof(sem_path), "/dev/shm/sem.%s", sem_name + 1); // убираем первый символ '/'
+  snprintf(sem_path, sizeof(sem_path), "/dev/shm/sem.%s",
+           sem_name + 1); // убираем первый символ '/'
   if (chmod(sem_path, 0666) == -1) {
-      perror("chmod sem failed");
-      // не критично, можно продолжать, но выведем ошибку
+    perror("chmod sem failed");
+    // не критично, можно продолжать, но выведем ошибку
   }
 
   return 0;
@@ -328,9 +330,9 @@ void close_shared_memory(SensorConfig *config) {
   char sem_name[256];
   snprintf(sem_name, sizeof(sem_name), "/sem_%.250s", config->shm_name);
   if (config->sem) {
-      sem_close(config->sem);
-      sem_unlink(sem_name);
-      config->sem = NULL;
+    sem_close(config->sem);
+    sem_unlink(sem_name);
+    config->sem = NULL;
   }
 }
 
@@ -411,11 +413,10 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   }
 
   status = vl53l5cx_set_ranging_frequency_hz(config, 10);
-	if(status)
-	{
-		perror("vl53l5cx_set_ranging_frequency_hz failed");
-		return status;
-	}
+  if (status) {
+    perror("vl53l5cx_set_ranging_frequency_hz failed");
+    return status;
+  }
 
   // Сохраняем указатель на конфигурацию
   sensor_config->sensor_config = config;
@@ -490,7 +491,8 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         if (init_status == 0) {
           // Меняем адрес на нужный
           if (configs[i].i2c_addr != 0x29) {
-            init_status = VL53L1X_SetI2CAddress(0x29 << 1, configs[i].i2c_addr << 1);
+            init_status =
+                VL53L1X_SetI2CAddress(0x29 << 1, configs[i].i2c_addr << 1);
             if (init_status != 0) {
               perror("Failed to change VL53L1X address");
               break; // или break, если хотите прервать обработку этого датчика
@@ -550,7 +552,8 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
           init_status = init_vl53l1x_sensor(configs[i].i2c_addr << 1);
           break;
         case SENSOR_VL53L5CX:
-          init_status = init_vl53l5cx_sensor(configs[i].i2c_addr << 1, &configs[i]);
+          init_status =
+              init_vl53l5cx_sensor(configs[i].i2c_addr << 1, &configs[i]);
           break;
         case SENSOR_TCS34725:
           // TODO: Реализовать для TCS34725
@@ -810,7 +813,7 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
         configs[*count].type = SENSOR_TCS34725;
       } else {
         fprintf(stderr, "Unknown sensor type '%s' in line %d, skipping\n",
-               type_str, *count + 1);
+                type_str, *count + 1);
         continue;
       }
 
@@ -849,13 +852,15 @@ int main(int argc, char *argv[]) {
 
   // read config file
   if (read_config("./sensors_config.txt", configs, &sensor_count) != 0) {
-    if (!daemon_mode) fprintf(stderr, "Error: cant read config\n");
+    if (!daemon_mode)
+      fprintf(stderr, "Error: cant read config\n");
     return EXIT_FAILURE;
   }
 
   // sensors init
   if (init_gpio(configs, sensor_count) != 0) {
-    if (!daemon_mode) fprintf(stderr, "Error: sensors initialization failed\n");
+    if (!daemon_mode)
+      fprintf(stderr, "Error: sensors initialization failed\n");
     return EXIT_FAILURE;
   }
 
@@ -908,7 +913,8 @@ int main(int argc, char *argv[]) {
 
             if (write_single_to_shm(&configs[i], distance, status) == 0) {
               if (!daemon_mode) {
-                printf("Sensor %d: Distance = %d mm, Status = %d\n", i, distance, status);
+                printf("Sensor %d: Distance = %d mm, Status = %d\n", i,
+                       distance, status);
               }
             } else {
               if (!daemon_mode) {
@@ -916,8 +922,7 @@ int main(int argc, char *argv[]) {
               }
             }
           }
-        }
-        else {
+        } else {
           if (!daemon_mode) {
             printf("Error reading sensor data for sensor %d\n", i);
           }
@@ -929,7 +934,7 @@ int main(int argc, char *argv[]) {
 
   // Корректное завершение
   stop_all_sensors(configs, sensor_count);
-  
+
   // Удаляем PID файл при завершении (только в режиме демона)
   if (daemon_mode) {
     remove_pid_file();
