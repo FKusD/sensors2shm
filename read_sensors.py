@@ -30,8 +30,8 @@ class SensorData:
             single_data = struct.unpack("<HBBBBBB", data[8:16])
             self.distance_mm = single_data[0]
             self.status = single_data[1]
-            self.matrix_data = None
-        else:  # Матричное измерение
+            self.clear = self.red = self.green = self.blue = None
+        elif self.data_format == 1:  # Матричное измерение (VL53L5CX)
             # 8 байт заголовка + 64*2 + 64 = 200 байт данных
             matrix_size = self.resolution
             distances = struct.unpack(f"<{matrix_size}H", data[8 : 8 + matrix_size * 2])
@@ -44,6 +44,16 @@ class SensorData:
                 distances[0] if distances else 0
             )  # Для обратной совместимости
             self.status = statuses[0] if statuses else 0
+            self.clear = self.red = self.green = self.blue = None
+        elif self.data_format == 2 and self.sensor_type == 2:
+            # TCS34725: 8 байт заголовка + 10 байт данных
+            tcs_data = struct.unpack("<HHHHBB", data[8:18])
+            self.clear = tcs_data[0]
+            self.red = tcs_data[1]
+            self.green = tcs_data[2]
+            self.blue = tcs_data[3]
+            self.status = tcs_data[4]
+            self.distance_mm = None
 
     def __str__(self):
         sensor_names = {0: "VL53L1X", 1: "VL53L5CX", 2: "TCS34725"}
@@ -54,7 +64,7 @@ class SensorData:
 
         if self.data_format == 0:  # Одиночное измерение
             return f"[{time_str}] {sensor_name}: Distance={self.distance_mm}mm, Status={self.status}"
-        else:  # Матричное измерение
+        elif self.data_format == 1:  # Матричное измерение
             # Полный вывод матрицы (NxN)
             n = int(self.resolution**0.5)
             if n * n != self.resolution:
@@ -73,6 +83,9 @@ class SensorData:
                         row_str += f"{self.distances[idx]:4d}({self.statuses[idx]}) "
                     matrix_str += row_str.rstrip() + "\n"
                 return f"[{time_str}] {sensor_name}:\n{matrix_str.rstrip()}"
+        elif self.data_format == 2:
+            return (f"[{time_str}] {sensor_name}: "
+                    f"Clear={self.clear}, R={self.red}, G={self.green}, B={self.blue}, Status={self.status}")
 
 
 class SensorReader:
@@ -152,6 +165,8 @@ class SensorReader:
             # Определяем размер данных
             if data_format == 0:  # Одиночное измерение
                 data_size = 16  # 8 байт заголовка + 8 байт данных
+            elif data_format == 2: # TCS34725
+                data_size = 18 # 8 байт заголовка + 10 байт данных
             else:  # Матричное измерение
                 data_size = (
                     8 + resolution * 3
@@ -226,7 +241,7 @@ def main():
     """Главная функция"""
     # Список имен shared memory сегментов (должны соответствовать конфигурации)
     # Можно изменить на нужные имена из sensors_config.txt
-    sensor_names = ["vl53l1x_left", "vl53l1x_right", "vl53l5cx_left", "vl53l5cx_right"]
+    sensor_names = ["vl53l1x_left", "vl53l1x_right", "vl53l5cx_left", "vl53l5cx_right", "tcs_color"]
 
     # Интервал обновления (в секундах)
     update_interval = 0.1

@@ -24,6 +24,9 @@
 #include <unistd.h>
 #include <vl53l5cx_api.h>
 #include <wiringPi.h>
+// --- Waveshare TCS34725 ---
+#include "TCS34725.h"
+#include "DEV_Config.h"
 
 // Константы для демона
 #define PID_FILE "/run/sensors2shm.pid"
@@ -52,7 +55,7 @@ typedef struct {
   uint32_t timestamp;  // Временная метка
   uint8_t sensor_type; // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
   uint8_t resolution;  // Разрешение (1 для одиночного, 16 для 4x4, 64 для 8x8)
-  uint8_t data_format; // Формат данных (0=одиночное, 1=матрица)
+  uint8_t data_format; // Формат данных (0=одиночное, 1=матрица, 2=цветовое)
   uint8_t reserved;    // Зарезервировано
 
   // Объединение для разных форматов данных
@@ -69,7 +72,9 @@ typedef struct {
       uint16_t distances[64]; // Массив расстояний (максимум 8x8)
       uint8_t statuses[64];   // Массив статусов
     } matrix;
-    struct { // tcs34725
+
+    // Измерение цвета (TCS34725)
+    struct {
         uint16_t clear;
         uint16_t red;
         uint16_t green;
@@ -433,6 +438,24 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   return 0;
 }
 
+// Функция для инициализации TCS34725
+int init_tcs34725_sensor(SensorConfig *config) {
+    // Инициализация WiringPi и I2C (DEV_ModuleInit)
+    if (DEV_ModuleInit() != 0) {
+        perror("DEV_ModuleInit failed");
+        return -1;
+    }
+    // Инициализация самого датчика
+    if (TCS34725_Init() != 0) {
+        perror("TCS34725_Init failed");
+        return -1;
+    }
+    // Можно добавить настройку интеграции/усиления при необходимости
+    // TCS34725_Set_IntegrationTime(TCS34725_INTEGRATIONTIME_50MS);
+    // TCS34725_Set_Gain(TCS34725_GAIN_16X);
+    return 0;
+}
+
 int init_gpio(SensorConfig *configs, int sensor_count) {
   if (wiringPiSetupGpio() == -1) {
     perror("Error: wiringPi init");
@@ -543,8 +566,14 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         break;
 
       case SENSOR_TCS34725:
-        // TODO: Реализовать для TCS34725
-        printf("TCS34725 initialization not implemented yet\n");
+        // Инициализация TCS34725
+        if (init_tcs34725_sensor(&configs[i]) == 0) {
+          if (create_shared_memory(&configs[i]) == 0) {
+            configs[i].initialized = 1;
+          } else {
+            perror("Failed to create shared memory for sensor %d");
+          }
+        }
         break;
       }
     } else {
@@ -622,7 +651,9 @@ void stop_all_sensors(SensorConfig *configs, int sensor_count) {
         break;
       }
       case SENSOR_TCS34725:
-        // TODO: Остановка для TCS34725
+        // Деинициализация аппаратных ресурсов Waveshare-драйвера
+        DEV_ModuleExit();
+        printf("TCS34725 деинициализирован (адрес 0x%02X)\n", configs[i].i2c_addr);
         break;
       }
 
@@ -740,9 +771,26 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
     return -1;
   }
 
-  case SENSOR_TCS34725:
-    // TODO: Реализовать чтение данных TCS34725
-    return -1;
+  case SENSOR_TCS34725: {
+    if (!config->initialized) {
+      perror("Error: TCS34725 not initialized");
+      return -1;
+    }
+    RGB rgb = TCS34725_Get_RGBData();
+    sem_wait(config->sem);
+    SensorData *data = (SensorData *)config->shm_ptr;
+    data->timestamp = (uint32_t)time(NULL);
+    data->sensor_type = SENSOR_TCS34725;
+    data->resolution = 1;
+    data->data_format = 2;
+    data->data.tcs.clear = rgb.C;
+    data->data.tcs.red = rgb.R;
+    data->data.tcs.green = rgb.G;
+    data->data.tcs.blue = rgb.B;
+    data->data.tcs.status = 0;
+    sem_post(config->sem);
+    return 0;
+  }
   }
   return -1;
 }
