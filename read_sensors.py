@@ -17,42 +17,42 @@ import posix_ipc
 # Структура данных датчика (должна соответствовать C структуре)
 class SensorData:
     def __init__(self, data: bytes):
-        # Распаковываем заголовок: timestamp, sensor_type, resolution, data_format, reserved
-        header = struct.unpack("<IBBBB", data[:8])
-        self.timestamp = header[0]
-        self.sensor_type = header[1]
-        self.resolution = header[2]
-        self.data_format = header[3]
+        # Распаковываем заголовок: timestamp_sec, timestamp_ms, sensor_type, resolution, data_format, reserved
+        header = struct.unpack("<I H B B B B", data[:10])
+        self.timestamp_sec = header[0]
+        self.timestamp_ms = header[1]
+        self.sensor_type = header[2]
+        self.resolution = header[3]
+        self.data_format = header[4]
+        # reserved = header[5]
 
         # Определяем размер данных в зависимости от формата
         if self.data_format == 0:  # Одиночное измерение
-            # 8 байт заголовка + 8 байт данных (distance + status + reserved)
-            single_data = struct.unpack("<HBBBBBB", data[8:16])
+            # 10 байт заголовка + 8 байт данных (distance + status + reserved)
+            single_data = struct.unpack("<HBBBBBB", data[10:18])
             self.distance_mm = single_data[0]
             self.status = single_data[1]
             self.matrix_data = None
         else:  # Матричное измерение
-            # 8 байт заголовка + 64*2 + 64 = 200 байт данных
+            # 10 байт заголовка + 64*2 + 64 = 202 байт данных
             matrix_size = self.resolution
-            distances = struct.unpack(f"<{matrix_size}H", data[8 : 8 + matrix_size * 2])
-            statuses = struct.unpack(
-                f"<{matrix_size}B", data[8 + matrix_size * 2 : 8 + matrix_size * 3]
-            )
+            distances = struct.unpack(f"<{matrix_size}H", data[10 : 10 + matrix_size * 2])
+            statuses = struct.unpack(f"<{matrix_size}B", data[10 + matrix_size * 2 : 10 + matrix_size * 3])
             self.distances = list(distances)
             self.statuses = list(statuses)
-            self.distance_mm = (
-                distances[0] if distances else 0
-            )  # Для обратной совместимости
+            self.distance_mm = distances[0] if distances else 0
             self.status = statuses[0] if statuses else 0
+
+    def get_timestamp(self):
+        return self.timestamp_sec + self.timestamp_ms / 1000.0
 
     def __str__(self):
         sensor_names = {0: "VL53L1X", 1: "VL53L5CX", 2: "TCS34725"}
         sensor_name = sensor_names.get(self.sensor_type, f"Unknown({self.sensor_type})")
 
         # Форматируем время
-        time_str = time.strftime("%H:%M:%S", time.localtime(self.timestamp))
-
-        if self.data_format == 0:  # Одиночное измерение
+        time_str = time.strftime("%H:%M:%S", time.localtime(self.timestamp_sec)) + f".{self.timestamp_ms:03d}"
+        if self.data_format == 0:
             return f"[{time_str}] {sensor_name}: Distance={self.distance_mm}mm, Status={self.status}"
         else:  # Матричное измерение
             # Полный вывод матрицы (NxN)
@@ -139,23 +139,23 @@ class SensorReader:
             sem.acquire(timeout=1)  # Ждём максимум 1 сек
             mmap_obj.seek(0)
             # Читаем заголовок для определения размера данных
-            header_data = mmap_obj.read(8)
-            if len(header_data) < 8:
+            header_data = mmap_obj.read(10)
+            if len(header_data) < 10:
                 sem.release()
                 return None
 
             # Распаковываем заголовок
-            header = struct.unpack("<IBBBB", header_data)
-            resolution = header[2]
-            data_format = header[3]
+            header = struct.unpack("<I H B B B B", header_data)
+            resolution = header[3]
+            data_format = header[4]
 
             # Определяем размер данных
             if data_format == 0:  # Одиночное измерение
-                data_size = 16  # 8 байт заголовка + 8 байт данных
+                data_size = 18  # 10 байт заголовка + 8 байт данных
             else:  # Матричное измерение
                 data_size = (
-                    8 + resolution * 3
-                )  # 8 байт заголовка + resolution*2 (distances) + resolution (statuses)
+                    10 + resolution * 3
+                )  # 10 байт заголовка + resolution*2 (distances) + resolution (statuses)
                 if resolution == 0:
                     print(f"{shm_name}: Некорректное разрешение (0), пропуск чтения")
                     sem.release()
@@ -208,7 +208,10 @@ class SensorReader:
                 for shm_name in sensor_names:
                     data = self.read_sensor_data(shm_name)
                     if data:
-                        print(f"{shm_name}: {data}")
+                        now = time.time()
+                        sensor_time = data.get_timestamp()
+                        delay_ms = (now - sensor_time) * 1000
+                        print(f"{shm_name}: {data} | Задержка: {delay_ms:.2f} мс")
                     else:
                         print(f"{shm_name}: Нет данных")
 

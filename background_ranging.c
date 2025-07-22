@@ -48,8 +48,17 @@ typedef struct {
 } SensorConfig;
 
 // Структура данных датчика в shared memory
+// Новый заголовок: 10 байт
+// uint32_t timestamp_sec; // 4 байта
+// uint16_t timestamp_ms;  // 2 байта
+// uint8_t sensor_type;    // 1 байт
+// uint8_t resolution;     // 1 байт
+// uint8_t data_format;    // 1 байт
+// uint8_t reserved;       // 1 байт
+
 typedef struct {
-  uint32_t timestamp;  // Временная метка
+  uint32_t timestamp_sec; // Временная метка (секунды)
+  uint16_t timestamp_ms;  // Временная метка (миллисекунды)
   uint8_t sensor_type; // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
   uint8_t resolution;  // Разрешение (1 для одиночного, 16 для 4x4, 64 для 8x8)
   uint8_t data_format; // Формат данных (0=одиночное, 1=матрица)
@@ -190,8 +199,7 @@ int create_shared_memory(SensorConfig *config) {
   // Определяем размер сегмента в зависимости от типа датчика
   size_t shm_size;
   if (config->type == SENSOR_VL53L5CX) {
-    shm_size =
-        8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
+    shm_size = 10 + 64 * 3; // 10 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
@@ -270,10 +278,14 @@ int write_single_to_shm(SensorConfig *config, uint16_t distance,
   SensorData *data = (SensorData *)config->shm_ptr;
 
   // Обновляем данные
-  data->timestamp = (uint32_t)time(NULL);
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  data->timestamp_sec = ts.tv_sec;
+  data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
   data->sensor_type = config->type;
-  data->resolution = 1;  // Одиночное измерение
-  data->data_format = 0; // Формат одиночного измерения
+  data->resolution = 1;
+  data->data_format = 0;
+  // data->reserved = 0;
   data->data.single.distance_mm = distance;
   data->data.single.status = status;
 
@@ -294,7 +306,10 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
   SensorData *data = (SensorData *)config->shm_ptr;
 
   // Обновляем данные
-  data->timestamp = (uint32_t)time(NULL);
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  data->timestamp_sec = ts.tv_sec;
+  data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
   data->sensor_type = config->type;
   data->resolution = resolution; // 16 для 4x4, 64 для 8x8
   data->data_format = 1;         // Формат матричного измерения
@@ -312,7 +327,7 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
 // Функция для закрытия shared memory
 void close_shared_memory(SensorConfig *config) {
   if (config->shm_ptr && config->shm_ptr != MAP_FAILED) {
-    size_t shm_size = 8 + 64 * 3; // Максимальный размер для матрицы 8x8
+    size_t shm_size = 10 + 64 * 3;
     munmap(config->shm_ptr, shm_size);
     config->shm_ptr = NULL;
   }
