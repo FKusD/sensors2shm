@@ -59,7 +59,7 @@ typedef struct {
 typedef struct {
   uint32_t timestamp_sec; // Временная метка (секунды)
   uint16_t timestamp_ms;  // Временная метка (миллисекунды)
-  uint8_t sensor_type; // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
+  uint8_t sensor_type;    // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
   uint8_t resolution;  // Разрешение (1 для одиночного, 16 для 4x4, 64 для 8x8)
   uint8_t data_format; // Формат данных (0=одиночное, 1=матрица)
   uint8_t reserved;    // Зарезервировано
@@ -199,7 +199,8 @@ int create_shared_memory(SensorConfig *config) {
   // Определяем размер сегмента в зависимости от типа датчика
   size_t shm_size;
   if (config->type == SENSOR_VL53L5CX) {
-    shm_size = 10 + 64 * 3; // 10 байт заголовка + 64*2 (distances) + 64 (statuses)
+    shm_size =
+        10 + 64 * 3; // 10 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
@@ -433,15 +434,14 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
     return status;
   }
 
-  uint32_t 				integration_time_ms;
+  uint32_t integration_time_ms;
   /* Get current integration time */
-	status = vl53l5cx_get_integration_time_ms(p_dev, &integration_time_ms);
-	if(status)
-	{
-		printf("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
-		return status;
-	}
-	printf("Current integration time is : %d ms\n", integration_time_ms);
+  status = vl53l5cx_get_integration_time_ms(config, &integration_time_ms);
+  if (status) {
+    printf("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
+    return status;
+  }
+  printf("Current integration time is : %d ms\n", integration_time_ms);
 
   // Сохраняем указатель на конфигурацию
   sensor_config->sensor_config = config;
@@ -924,6 +924,7 @@ int main(int argc, char *argv[]) {
 
   // main loop
   while (running) {
+    printf(".");
     for (int i = 0; i < sensor_count; i++) {
       if (configs[i].initialized) {
         if (read_sensor_data(&configs[i], sensor_data) == 0) {
