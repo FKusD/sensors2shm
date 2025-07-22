@@ -13,3 +13,6 @@ l5cx 22 0x34 vl53l5cx_left
 
 # right VL53L5CX
 l5cx 23 0x35 vl53l5cx_right
+
+# tcs34725 color sensor
+tcs 24 0x29 tcs_color

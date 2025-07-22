@@ -12,7 +12,86 @@ import signal
 import sys
 from typing import Dict, Optional
 import posix_ipc
+import Adafruit_TCS34725
 
+import smbus
+import pigpio
+
+# --- Настройки для программной I2C ---
+TCS34725_I2C_ADDR = 0x29
+SDA_PIN = 10
+SCL_PIN = 9
+
+# Инициализация pigpio и bit-bang I2C
+pi = pigpio.pi()
+if not pi.connected:
+    print("Ошибка: не удалось подключиться к pigpio daemon. Запустите 'sudo pigpiod'.")
+    sys.exit(1)
+
+# Открываем программную I2C на нужных пинах
+bb_i2c_handle = pi.bb_i2c_open(SDA_PIN, SCL_PIN, 100000)  # 100kHz
+if bb_i2c_handle < 0:
+    print(f"Ошибка открытия программной I2C на SDA={SDA_PIN}, SCL={SCL_PIN}")
+    sys.exit(1)
+
+def tcs34725_write(reg, value):
+    # Команда записи: [адрес][команда][значение]
+    pi.bb_i2c_zip(SDA_PIN, [
+        4, TCS34725_I2C_ADDR,  # Start, адрес
+        2, 1, (0x80 | reg),   # Write 1 байт: адрес регистра (с CMD-битом)
+        2, 1, value,          # Write 1 байт: значение
+        3, 0                  # Stop
+    ])
+
+def tcs34725_read16(reg):
+    # Чтение 2 байт из регистра
+    res = pi.bb_i2c_zip(SDA_PIN, [
+        4, TCS34725_I2C_ADDR,
+        2, 1, (0x80 | reg),
+        4, TCS34725_I2C_ADDR | 1,
+        6, 2,                 # Read 2 байта
+        3, 0
+    ])
+    if isinstance(res, list) and len(res) == 2:
+        return res[0] | (res[1] << 8)
+    return 0
+
+def tcs34725_init():
+    # Включаем питание и АЦП
+    tcs34725_write(0x00, 0x01)  # ENABLE: Power ON
+    time.sleep(0.01)
+    tcs34725_write(0x00, 0x03)  # ENABLE: Power ON + ADC EN
+    time.sleep(0.01)
+    # Устанавливаем интеграцию (по умолчанию)
+    tcs34725_write(0x01, 0xD5)  # ATIME
+    tcs34725_write(0x0F, 0x00)  # CONTROL: Gain 1x
+
+def tcs34725_get_raw_data():
+    c = tcs34725_read16(0x14)
+    r = tcs34725_read16(0x16)
+    g = tcs34725_read16(0x18)
+    b = tcs34725_read16(0x1A)
+    return r, g, b, c
+
+def tcs34725_calculate_lux(r, g, b):
+    # Простейшая формула оценки освещённости
+    return 0.136 * r + 1.0 * g - 0.444 * b
+
+def tcs34725_calculate_color_temp(r, g, b):
+    # Простейшая формула цветовой температуры
+    if r + g + b == 0:
+        return 0
+    return (r + g + b) // 3
+
+# Инициализация датчика
+try:
+    tcs34725_init()
+    print("TCS34725 инициализирован через программную I2C (pigpio)")
+except Exception as e:
+    print(f"Ошибка инициализации TCS34725: {e}")
+
+
+tcs = Adafruit_TCS34725.TCS34725()
 
 # Структура данных датчика (должна соответствовать C структуре)
 class SensorData:
@@ -227,6 +306,16 @@ class SensorReader:
                     else:
                         print(f"{shm_name}: Нет данных")
 
+                # --- Чтение и вывод данных с TCS34725 ---
+                try:
+                    r, g, b, c = tcs34725_get_raw_data()
+                    color_temp = tcs34725_calculate_color_temp(r, g, b)
+                    lux = tcs34725_calculate_lux(r, g, b)
+                    print(f"TCS34725: R={r}, G={g}, B={b}, C={c}, Temp={color_temp}, Lux={lux:.1f}")
+                except Exception as e:
+                    print(f"TCS34725: Ошибка чтения: {e}")
+                # ----------------------------------------
+
                 print("-" * 60)
                 time.sleep(update_interval)
 
@@ -247,8 +336,13 @@ def main():
     update_interval = 0.1
 
     # Создаем и запускаем читатель
-    reader = SensorReader()
-    reader.run(sensor_names, update_interval)
+    try:
+        reader = SensorReader()
+        reader.run(sensor_names, update_interval)
+    finally:
+        # Закрываем программную I2C
+        pi.bb_i2c_close(SDA_PIN)
+        pi.stop()
 
 
 if __name__ == "__main__":
