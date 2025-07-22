@@ -427,11 +427,20 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
     return -1;
   }
 
-  status = vl53l5cx_set_ranging_frequency_hz(config, 10);
+  status = vl53l5cx_set_ranging_frequency_hz(config, 15);
   if (status) {
     perror("vl53l5cx_set_ranging_frequency_hz failed");
     return status;
   }
+
+  /* Get current integration time */
+	status = vl53l5cx_get_integration_time_ms(p_dev, &integration_time_ms);
+	if(status)
+	{
+		printf("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
+		return status;
+	}
+	printf("Current integration time is : %d ms\n", integration_time_ms);
 
   // Сохраняем указатель на конфигурацию
   sensor_config->sensor_config = config;
