@@ -405,14 +405,14 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
     return -1;
   }
 
-  status = vl53l5cx_set_resolution(config, 64);
+  status = vl53l5cx_set_resolution(config, 16);
   if (status) {
     perror("VL53L5CX resolution set failed");
     free(config);
     return -1;
   }
 
-  status = vl53l5cx_set_ranging_frequency_hz(config, 10);
+  status = vl53l5cx_set_ranging_frequency_hz(config, 60);
   if (status) {
     perror("vl53l5cx_set_ranging_frequency_hz failed");
     return status;
