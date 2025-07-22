@@ -433,6 +433,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
     return status;
   }
 
+  uint32_t 				integration_time_ms;
   /* Get current integration time */
 	status = vl53l5cx_get_integration_time_ms(p_dev, &integration_time_ms);
 	if(status)
