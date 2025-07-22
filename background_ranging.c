@@ -719,7 +719,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
     }
 
     clock_gettime(CLOCK_REALTIME, &now_ts);
-    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
     printf("Checking VL53L: %u мс\n", dt_ms);
     first_ts = now_ts;
 
@@ -728,6 +728,11 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       if (vl53l5cx_get_ranging_data(vl53l5cx_config, &results) != 0) {
         return -1;
       }
+
+      clock_gettime(CLOCK_REALTIME, &now_ts);
+      uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      printf("vl53l5cx_get_ranging_data: %u мс\n", dt_ms);
+      first_ts = now_ts;
 
       // Получаем текущее разрешение
       uint8_t resolution;
@@ -752,7 +757,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       }
 
       clock_gettime(CLOCK_REALTIME, &now_ts);
-      uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+      uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
       printf("Before writing to shm: %u мс\n", dt_ms);
       first_ts = now_ts;
 
