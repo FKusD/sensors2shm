@@ -719,7 +719,8 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
     }
 
     clock_gettime(CLOCK_REALTIME, &now_ts);
-    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+                     (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
     printf("Checking VL53L: %u мс\n", dt_ms);
     first_ts = now_ts;
 
@@ -730,7 +731,8 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       }
 
       clock_gettime(CLOCK_REALTIME, &now_ts);
-      uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
       printf("vl53l5cx_get_ranging_data: %u мс\n", dt_ms);
       first_ts = now_ts;
 
@@ -757,7 +759,8 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       }
 
       clock_gettime(CLOCK_REALTIME, &now_ts);
-      uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
       printf("Before writing to shm: %u мс\n", dt_ms);
       first_ts = now_ts;
 
@@ -946,7 +949,8 @@ int main(int argc, char *argv[]) {
   while (running) {
     struct timespec now_ts;
     clock_gettime(CLOCK_REALTIME, &now_ts);
-    uint32_t dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+    uint32_t dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 +
+                     (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
     printf("Время с прошлой итерации: %u мс\n", dt_ms);
     last_ts = now_ts;
     printf(".");
@@ -954,7 +958,8 @@ int main(int argc, char *argv[]) {
       if (configs[i].initialized) {
         uint8_t status = read_sensor_data(&configs[i], sensor_data);
         clock_gettime(CLOCK_REALTIME, &now_ts);
-        dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+        dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 +
+                (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
         printf("Время read_sensor: %u мс\n", dt_ms);
         if (status == 0) {
           if (configs[i].type == SENSOR_VL53L5CX) {
