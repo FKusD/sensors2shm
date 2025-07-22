@@ -198,26 +198,26 @@ class SensorReader:
             self.close_shared_memory(shm_name)
 
     def run(self, sensor_names: list, update_interval: float = 0.1):
-        """Основной цикл чтения данных"""
         print("Программа чтения данных датчиков запущена")
         print("Нажмите Ctrl+C для остановки")
         print("-" * 60)
-
+        last_time = time.time()
         try:
             while self.running:
+                now = time.time()
+                dt_ms = (now - last_time) * 1000
+                print(f"Время с прошлой итерации: {dt_ms:.2f} мс")
+                last_time = now
                 for shm_name in sensor_names:
                     data = self.read_sensor_data(shm_name)
                     if data:
-                        now = time.time()
                         sensor_time = data.get_timestamp()
                         delay_ms = (now - sensor_time) * 1000
                         print(f"{shm_name}: {data} | Задержка: {delay_ms:.2f} мс")
                     else:
                         print(f"{shm_name}: Нет данных")
-
                 print("-" * 60)
                 time.sleep(update_interval)
-
         except KeyboardInterrupt:
             print("\nПолучен сигнал прерывания")
         finally:
