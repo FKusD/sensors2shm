@@ -701,6 +701,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
 
   case SENSOR_VL53L5CX: {
     struct timespec first_ts, now_ts;
+    clock_gettime(CLOCK_REALTIME, &first_ts);
 
     VL53L5CX_ResultsData results;
     uint8_t isReady = 0;
@@ -718,7 +719,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
     }
 
     clock_gettime(CLOCK_REALTIME, &now_ts);
-    uint32_t dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
     printf("Checking VL53L: %u мс\n", dt_ms);
     first_ts = now_ts;
 
@@ -751,7 +752,7 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       }
 
       clock_gettime(CLOCK_REALTIME, &now_ts);
-      uint32_t dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+      uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
       printf("Before writing to shm: %u мс\n", dt_ms);
       first_ts = now_ts;
 
@@ -950,7 +951,7 @@ int main(int argc, char *argv[]) {
         clock_gettime(CLOCK_REALTIME, &now_ts);
         dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 + (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
         printf("Время read_sensor: %u мс\n", dt_ms);
-        if (read_sensor_data(&configs[i], sensor_data) == 0) {
+        if (status == 0) {
           if (configs[i].type == SENSOR_VL53L5CX) {
             if (!daemon_mode) {
               printf("Sensor %d: Matrix data written to shared memory\n", i);
