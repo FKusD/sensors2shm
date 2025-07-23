@@ -718,6 +718,12 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
         statuses[i] = results.target_status[i];
       }
 
+      // Отладочный вывод для проверки статусов и дистанций
+      printf("[DEBUG] VL53L5CX resolution=%d\n", resolution);
+      for (int i = 0; i < resolution; i++) {
+        printf("[DEBUG] Zone %2d: distance=%5d mm, status=%d\n", i, distances[i], statuses[i]);
+      }
+
       // Записываем матричные данные в shared memory
       if (write_matrix_to_shm(config, distances, statuses, resolution) == 0) {
         // Для обратной совместимости также записываем в буфер данные первой
