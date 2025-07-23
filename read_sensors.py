@@ -27,6 +27,8 @@ class SensorData:
         # Определяем размер данных в зависимости от формата
         if self.data_format == 0:  # Одиночное измерение
             # 8 байт заголовка + 8 байт данных (distance + status + reserved)
+            if len(data) < 16:
+                raise ValueError(f"Недостаточно данных для одиночного измерения: {len(data)} байт")
             single_data = struct.unpack("<HBBBBBB", data[8:16])
             self.distance_mm = single_data[0]
             self.status = single_data[1]
@@ -155,8 +157,8 @@ class SensorReader:
                 data_size = 16  # 8 байт заголовка + 8 байт данных
             else:  # Матричное измерение
                 data_size = (
-                    8 + resolution * 3
-                )  # 8 байт заголовка + resolution*2 (distances) + resolution (statuses)
+                    8 + 64 * 2 + 64
+                )  # 8 байт заголовка + 64*2 (distances) + 64 (statuses)
                 if resolution == 0:
                     print(f"{shm_name}: Некорректное разрешение (0), пропуск чтения")
                     sem.release()
@@ -174,7 +176,11 @@ class SensorReader:
             if len(data) == data_size:
                 print(f"{shm_name}: RAW HEADER {data[:16].hex()}")
                 sem.release()
-                return SensorData(data)
+                try:
+                    return SensorData(data)
+                except ValueError as ve:
+                    print(f"{shm_name}: {ve}")
+                    return None
             else:
                 sem.release()
                 return None
