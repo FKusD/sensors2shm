@@ -1,7 +1,7 @@
 
 #define VL53L5CX_DISABLE_AMBIENT_PER_SPAD
 #define VL53L5CX_DISABLE_NB_SPADS_ENABLED
-#define VL53L5CX_DISABLE_NB_TARGET_DETECTED
+// #define VL53L5CX_DISABLE_NB_TARGET_DETECTED
 #define VL53L5CX_DISABLE_SIGNAL_PER_SPAD
 // #define VL53L5CX_DISABLE_RANGE_SIGMA_MM
 // #define VL53L5CX_DISABLE_DISTANCE_MM
@@ -929,7 +929,7 @@ int main(int argc, char *argv[]) {
         }
       }
     }
-    delay(10); // Пауза между циклами
+    delay(5); // Пауза между циклами
   }
 
   // Корректное завершение
