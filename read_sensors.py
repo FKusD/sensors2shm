@@ -32,11 +32,12 @@ class SensorData:
             self.status = single_data[1]
             self.matrix_data = None
         else:  # Матричное измерение
-            # 8 байт заголовка + 64*2 + 64 = 200 байт данных
+            # 8 байт заголовка + 64*2 + 64 = 200 байт данных (всегда выделяется максимум)
             matrix_size = self.resolution
+            MAX_MATRIX_SIZE = 64
             distances = struct.unpack(f"<{matrix_size}H", data[8 : 8 + matrix_size * 2])
             statuses = struct.unpack(
-                f"<{matrix_size}B", data[8 + matrix_size * 2 : 8 + matrix_size * 3]
+                f"<{matrix_size}B", data[8 + MAX_MATRIX_SIZE * 2 : 8 + MAX_MATRIX_SIZE * 2 + matrix_size]
             )
             self.distances = list(distances)
             self.statuses = list(statuses)
