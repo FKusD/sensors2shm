@@ -49,8 +49,9 @@ typedef struct {
 
 // Структура данных датчика в shared memory
 typedef struct {
-  uint32_t timestamp;  // Временная метка
-  uint8_t sensor_type; // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
+  uint32_t timestamp_sec; // Временная метка (секунды)
+  uint16_t timestamp_ms;  // Временная метка (миллисекунды)
+  uint8_t sensor_type;    // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
   uint8_t resolution;  // Разрешение (1 для одиночного, 16 для 4x4, 64 для 8x8)
   uint8_t data_format; // Формат данных (0=одиночное, 1=матрица)
   uint8_t reserved;    // Зарезервировано
@@ -191,7 +192,7 @@ int create_shared_memory(SensorConfig *config) {
   size_t shm_size;
   if (config->type == SENSOR_VL53L5CX) {
     shm_size =
-        8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
+        10 + 64 * 3; // 10 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
@@ -270,10 +271,14 @@ int write_single_to_shm(SensorConfig *config, uint16_t distance,
   SensorData *data = (SensorData *)config->shm_ptr;
 
   // Обновляем данные
-  data->timestamp = (uint32_t)time(NULL);
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  data->timestamp_sec = ts.tv_sec;
+  data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
   data->sensor_type = config->type;
-  data->resolution = 1;  // Одиночное измерение
-  data->data_format = 0; // Формат одиночного измерения
+  data->resolution = 1;
+  data->data_format = 0;
+  // data->reserved = 0;
   data->data.single.distance_mm = distance;
   data->data.single.status = status;
 
@@ -294,7 +299,10 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
   SensorData *data = (SensorData *)config->shm_ptr;
 
   // Обновляем данные
-  data->timestamp = (uint32_t)time(NULL);
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  data->timestamp_sec = ts.tv_sec;
+  data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
   data->sensor_type = config->type;
   data->resolution = resolution; // 16 для 4x4, 64 для 8x8
   data->data_format = 1;         // Формат матричного измерения
@@ -312,7 +320,7 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
 // Функция для закрытия shared memory
 void close_shared_memory(SensorConfig *config) {
   if (config->shm_ptr && config->shm_ptr != MAP_FAILED) {
-    size_t shm_size = 8 + 64 * 3; // Максимальный размер для матрицы 8x8
+    size_t shm_size = 10 + 64 * 3;
     munmap(config->shm_ptr, shm_size);
     config->shm_ptr = NULL;
   }
@@ -417,6 +425,15 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
     perror("vl53l5cx_set_ranging_frequency_hz failed");
     return status;
   }
+
+  uint32_t integration_time_ms;
+  /* Get current integration time */
+  status = vl53l5cx_get_integration_time_ms(config, &integration_time_ms);
+  if (status) {
+    printf("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
+    return status;
+  }
+  printf("Current integration time is : %d ms\n", integration_time_ms);
 
   // Сохраняем указатель на конфигурацию
   sensor_config->sensor_config = config;
@@ -675,6 +692,9 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
   }
 
   case SENSOR_VL53L5CX: {
+    struct timespec first_ts, now_ts;
+    clock_gettime(CLOCK_REALTIME, &first_ts);
+
     VL53L5CX_ResultsData results;
     uint8_t isReady = 0;
     VL53L5CX_Configuration *vl53l5cx_config =
@@ -690,11 +710,23 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       return -1;
     }
 
+    clock_gettime(CLOCK_REALTIME, &now_ts);
+    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+                     (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+    printf("Checking VL53L: %u мс\n", dt_ms);
+    first_ts = now_ts;
+
     if (isReady) {
       // Получаем данные
       if (vl53l5cx_get_ranging_data(vl53l5cx_config, &results) != 0) {
         return -1;
       }
+
+      clock_gettime(CLOCK_REALTIME, &now_ts);
+      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      printf("vl53l5cx_get_ranging_data: %u мс\n", dt_ms);
+      first_ts = now_ts;
 
       // Получаем текущее разрешение
       uint8_t resolution;
@@ -717,6 +749,12 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
         distances[i] = results.distance_mm[i];
         statuses[i] = results.target_status[i];
       }
+
+      clock_gettime(CLOCK_REALTIME, &now_ts);
+      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      printf("Before writing to shm: %u мс\n", dt_ms);
+      first_ts = now_ts;
 
       // Записываем матричные данные в shared memory
       if (write_matrix_to_shm(config, distances, statuses, resolution) == 0) {
@@ -898,10 +936,24 @@ int main(int argc, char *argv[]) {
   }
 
   // main loop
+  struct timespec last_ts;
+  clock_gettime(CLOCK_REALTIME, &last_ts);
   while (running) {
+    struct timespec now_ts;
+    clock_gettime(CLOCK_REALTIME, &now_ts);
+    uint32_t dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 +
+                     (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+    printf("Время с прошлой итерации: %u мс\n", dt_ms);
+    last_ts = now_ts;
+    printf(".");
     for (int i = 0; i < sensor_count; i++) {
       if (configs[i].initialized) {
-        if (read_sensor_data(&configs[i], sensor_data) == 0) {
+        uint8_t status = read_sensor_data(&configs[i], sensor_data);
+        clock_gettime(CLOCK_REALTIME, &now_ts);
+        dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 +
+                (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+        printf("Время read_sensor: %u мс\n", dt_ms);
+        if (status == 0) {
           if (configs[i].type == SENSOR_VL53L5CX) {
             if (!daemon_mode) {
               printf("Sensor %d: Matrix data written to shared memory\n", i);
@@ -929,7 +981,7 @@ int main(int argc, char *argv[]) {
         }
       }
     }
-    delay(10); // Пауза между циклами
+    delay(5); // Пауза между циклами
   }
 
   // Корректное завершение
