@@ -41,7 +41,7 @@ typedef struct {
 typedef struct {
   uint32_t timestamp_sec; // Временная метка (секунды)
   // uint16_t timestamp_ms;  // Временная метка (миллисекунды)
-  uint8_t sensor_type;    // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
+  uint8_t sensor_type; // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
   uint8_t resolution;  // Разрешение (1 для одиночного, 16 для 4x4, 64 для 8x8)
   uint8_t data_format; // Формат данных (0=одиночное, 1=матрица)
   uint8_t reserved;    // Зарезервировано
@@ -182,7 +182,7 @@ int create_shared_memory(SensorConfig *config) {
   size_t shm_size;
   if (config->type == SENSOR_VL53L5CX) {
     shm_size =
-       8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
+        8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
@@ -420,7 +420,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   /* Get current integration time */
   status = vl53l5cx_get_integration_time_ms(config, &integration_time_ms);
   if (status) {
-    perror("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
+    printf("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
     return status;
   }
   printf("Current integration time is : %d ms\n", integration_time_ms);
