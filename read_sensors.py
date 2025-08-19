@@ -245,7 +245,7 @@ def main():
     sensor_names = ["vl53l1x_left", "vl53l1x_right", "vl53l5cx_left", "vl53l5cx_right"]
 
     # Интервал обновления (в секундах)
-    update_interval = 0.1
+    update_interval = 0.004
 
     # Создаем и запускаем читатель
     reader = SensorReader()

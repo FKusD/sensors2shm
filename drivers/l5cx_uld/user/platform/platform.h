@@ -1,14 +1,14 @@
 /**
-  *
-  * Copyright (c) 2021 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ *
+ * Copyright (c) 2021 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 
 #ifndef PLATFORM_H_
 #define PLATFORM_H_
@@ -25,15 +25,14 @@
  * layer.
  */
 
-typedef struct
-{
-	/* To be filled with customer's platform. At least an I2C address/descriptor
-	 * needs to be added */
-	/* Example for most standard platform : I2C address of sensor */
-	uint16_t  			address;
+typedef struct {
+  /* To be filled with customer's platform. At least an I2C address/descriptor
+   * needs to be added */
+  /* Example for most standard platform : I2C address of sensor */
+  uint16_t address;
 
-	/* For Linux implementation, file descriptor */
-	int fd;
+  /* For Linux implementation, file descriptor */
+  int fd;
 
 } VL53L5CX_Platform;
 
@@ -44,13 +43,13 @@ typedef struct
  * zone means a lower RAM). The value must be between 1 and 4.
  */
 
-#define 	VL53L5CX_NB_TARGET_PER_ZONE		1U
+#define VL53L5CX_NB_TARGET_PER_ZONE 1U
 
 /*
  * @brief The macro below can be used to avoid data conversion into the driver.
- * By default there is a conversion between firmware and user data. Using this macro
- * allows to use the firmware format instead of user format. The firmware format allows
- * an increased precision.
+ * By default there is a conversion between firmware and user data. Using this
+ * macro allows to use the firmware format instead of user format. The firmware
+ * format allows an increased precision.
  */
 
 // #define 	VL53L5CX_USE_RAW_FORMAT
@@ -61,18 +60,17 @@ typedef struct
  * I2C access.
  */
 
-// #define VL53L5CX_DISABLE_AMBIENT_PER_SPAD
-// #define VL53L5CX_DISABLE_NB_SPADS_ENABLED
+#define VL53L5CX_DISABLE_AMBIENT_PER_SPAD
+#define VL53L5CX_DISABLE_NB_SPADS_ENABLED
 // #define VL53L5CX_DISABLE_NB_TARGET_DETECTED
-// #define VL53L5CX_DISABLE_SIGNAL_PER_SPAD
-// #define VL53L5CX_DISABLE_RANGE_SIGMA_MM
+#define VL53L5CX_DISABLE_SIGNAL_PER_SPAD
+#define VL53L5CX_DISABLE_RANGE_SIGMA_MM
 // #define VL53L5CX_DISABLE_DISTANCE_MM
-// #define VL53L5CX_DISABLE_REFLECTANCE_PERCENT
+#define VL53L5CX_DISABLE_REFLECTANCE_PERCENT
 // #define VL53L5CX_DISABLE_TARGET_STATUS
-// #define VL53L5CX_DISABLE_MOTION_INDICATOR
+#define VL53L5CX_DISABLE_MOTION_INDICATOR
 
-
- /**
+/**
  * @brief Mandatory function used to read one single byte.
  * @param (VL53L5CX_Platform*) p_platform : Pointer of VL53L5CX platform
  * structure.
@@ -81,10 +79,8 @@ typedef struct
  * @return (uint8_t) status : 0 if OK
  */
 
-uint8_t VL53L5CX_RdByte(
-		VL53L5CX_Platform * p_platform,
-		uint16_t reg_address,
-		uint8_t *p_value);
+uint8_t VL53L5CX_RdByte(VL53L5CX_Platform *p_platform, uint16_t reg_address,
+                        uint8_t *p_value);
 
 /**
  * @brief Mandatory function used to write one single byte.
@@ -95,10 +91,8 @@ uint8_t VL53L5CX_RdByte(
  * @return (uint8_t) status : 0 if OK
  */
 
-uint8_t VL53L5CX_WrByte(
-		VL53L5CX_Platform * p_platform,
-		uint16_t reg_address,
-		uint8_t value);
+uint8_t VL53L5CX_WrByte(VL53L5CX_Platform *p_platform, uint16_t reg_address,
+                        uint8_t value);
 
 /**
  * @param (VL53L5CX_Platform*) p_platform : Pointer of VL53L5CX platform
@@ -109,11 +103,8 @@ uint8_t VL53L5CX_WrByte(
  * @return (uint8_t) status : 0 if OK
  */
 
-uint8_t VL53L5CX_RdMulti(
-		VL53L5CX_Platform * p_platform,
-		uint16_t reg_address,
-		uint8_t *p_values,
-		uint32_t size);
+uint8_t VL53L5CX_RdMulti(VL53L5CX_Platform *p_platform, uint16_t reg_address,
+                         uint8_t *p_values, uint32_t size);
 
 /**
  * @brief Mandatory function used to write multiples bytes.
@@ -125,11 +116,8 @@ uint8_t VL53L5CX_RdMulti(
  * @return (uint8_t) status : 0 if OK
  */
 
-uint8_t VL53L5CX_WrMulti(
-		VL53L5CX_Platform * p_platform,
-		uint16_t reg_address,
-		uint8_t *p_values,
-		uint32_t size);
+uint8_t VL53L5CX_WrMulti(VL53L5CX_Platform *p_platform, uint16_t reg_address,
+                         uint8_t *p_values, uint32_t size);
 
 /**
  * @brief Optional function, only used to perform an hardware reset of the
@@ -141,17 +129,16 @@ uint8_t VL53L5CX_WrMulti(
  * @return (uint8_t) status : 0 if OK
  */
 
-uint8_t VL53L5CX_Reset_Sensor(
-		VL53L5CX_Platform * p_platform);
+uint8_t VL53L5CX_Reset_Sensor(VL53L5CX_Platform *p_platform);
 
 /**
- * @brief This function is used to wait for a new measurement. It can 
+ * @brief This function is used to wait for a new measurement. It can
  * support both interrupt mode with kernel module and polling mode
  * @param (VL53L5CX_Platform*) p_platform : Pointer of VL53L5CX platform
  * structure.
  * @return (uint8_t) status : 1 if data is ready
  */
-uint8_t VL53L5CX_wait_for_dataready(VL53L5CX_Platform * p_platform);
+uint8_t VL53L5CX_wait_for_dataready(VL53L5CX_Platform *p_platform);
 
 /**
  * @brief Mandatory function, used to swap a buffer. The buffer size is always a
@@ -160,9 +147,7 @@ uint8_t VL53L5CX_wait_for_dataready(VL53L5CX_Platform * p_platform);
  * @param (uint16_t) size : Buffer size to swap
  */
 
-void VL53L5CX_SwapBuffer(
-		uint8_t 		*buffer,
-		uint16_t 	 	 size);
+void VL53L5CX_SwapBuffer(uint8_t *buffer, uint16_t size);
 /**
  * @brief Mandatory function, used to wait during an amount of time. It must be
  * filled as it's used into the API.
@@ -172,23 +157,20 @@ void VL53L5CX_SwapBuffer(
  * @return (uint8_t) status : 0 if wait is finished.
  */
 
-uint8_t VL53L5CX_WaitMs(
-		VL53L5CX_Platform * p_platform,
-		uint32_t TimeMs);
+uint8_t VL53L5CX_WaitMs(VL53L5CX_Platform *p_platform, uint32_t TimeMs);
 
 /**
  * @brief I2C communication channel initialization
  * @param (int) *fd : pointer on a I2C channel descriptor.
  * @return (uint8_t) status : 0 if OK
  */
-int32_t vl53l5cx_comms_init(VL53L5CX_Platform * p_platform);
-
+int32_t vl53l5cx_comms_init(VL53L5CX_Platform *p_platform);
 
 /**
  * @brief I2C communication channel deletion
  * @param (int) fd : I2C channel descriptor.
  * @return (uint8_t) status : 0 if OK
  */
-int32_t vl53l5cx_comms_close(VL53L5CX_Platform * p_platform);
+int32_t vl53l5cx_comms_close(VL53L5CX_Platform *p_platform);
 
-#endif	// _PLATFORM_H_
+#endif // _PLATFORM_H_

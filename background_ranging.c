@@ -729,16 +729,22 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       first_ts = now_ts;
 
       // Получаем текущее разрешение
-      uint8_t resolution;
-      if (vl53l5cx_get_resolution(vl53l5cx_config, &resolution) != 0) {
-        fprintf(stderr, "vl53l5cx_get_resolution error, пропуск записи\n");
-        return -1;
-      }
-      if (resolution == 0) {
-        fprintf(stderr, "resolution==0, пропуск записи в shared memory\n");
-        return -1;
-      }
-      printf("VL53L5CX: resolution = %d\n", resolution);
+      uint8_t resolution = 16;
+      // if (vl53l5cx_get_resolution(vl53l5cx_config, &resolution) != 0) {
+      //   fprintf(stderr, "vl53l5cx_get_resolution error, пропуск записи\n");
+      //   return -1;
+      // }
+      // if (resolution == 0) {
+      //   fprintf(stderr, "resolution==0, пропуск записи в shared memory\n");
+      //   return -1;
+      // }
+      // printf("VL53L5CX: resolution = %d\n", resolution);
+
+      clock_gettime(CLOCK_REALTIME, &now_ts);
+      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      printf("Before creating array: %u мс\n", dt_ms);
+      first_ts = now_ts;
 
       // Подготавливаем массивы для матричных данных
       uint16_t distances[64];
