@@ -1,13 +1,3 @@
-
-// #define VL53L5CX_DISABLE_AMBIENT_PER_SPAD
-// #define VL53L5CX_DISABLE_NB_SPADS_ENABLED
-// #define VL53L5CX_DISABLE_NB_TARGET_DETECTED
-// #define VL53L5CX_DISABLE_SIGNAL_PER_SPAD
-// #define VL53L5CX_DISABLE_RANGE_SIGMA_MM
-// #define VL53L5CX_DISABLE_DISTANCE_MM
-// #define VL53L5CX_DISABLE_REFLECTANCE_PERCENT
-// #define VL53L5CX_DISABLE_TARGET_STATUS
-// #define VL53L5CX_DISABLE_MOTION_INDICATOR
 #include <VL53L1X_api.h>
 #include <fcntl.h>
 #include <linux/i2c-dev.h>
@@ -50,7 +40,7 @@ typedef struct {
 // Структура данных датчика в shared memory
 typedef struct {
   uint32_t timestamp_sec; // Временная метка (секунды)
-  uint16_t timestamp_ms;  // Временная метка (миллисекунды)
+  // uint16_t timestamp_ms;  // Временная метка (миллисекунды)
   uint8_t sensor_type;    // Тип датчика (0=VL53L1X, 1=VL53L5CX, 2=TCS34725)
   uint8_t resolution;  // Разрешение (1 для одиночного, 16 для 4x4, 64 для 8x8)
   uint8_t data_format; // Формат данных (0=одиночное, 1=матрица)
@@ -192,7 +182,7 @@ int create_shared_memory(SensorConfig *config) {
   size_t shm_size;
   if (config->type == SENSOR_VL53L5CX) {
     shm_size =
-        10 + 64 * 3; // 10 байт заголовка + 64*2 (distances) + 64 (statuses)
+       8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
@@ -274,7 +264,7 @@ int write_single_to_shm(SensorConfig *config, uint16_t distance,
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   data->timestamp_sec = ts.tv_sec;
-  data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
+  // data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
   data->sensor_type = config->type;
   data->resolution = 1;
   data->data_format = 0;
@@ -302,7 +292,7 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   data->timestamp_sec = ts.tv_sec;
-  data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
+  // data->timestamp_ms = ts.tv_nsec / 1000000; // миллисекунды
   data->sensor_type = config->type;
   data->resolution = resolution; // 16 для 4x4, 64 для 8x8
   data->data_format = 1;         // Формат матричного измерения
@@ -320,7 +310,7 @@ int write_matrix_to_shm(SensorConfig *config, uint16_t *distances,
 // Функция для закрытия shared memory
 void close_shared_memory(SensorConfig *config) {
   if (config->shm_ptr && config->shm_ptr != MAP_FAILED) {
-    size_t shm_size = 10 + 64 * 3;
+    size_t shm_size = 8 + 64 * 3;
     munmap(config->shm_ptr, shm_size);
     config->shm_ptr = NULL;
   }
@@ -430,7 +420,7 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   /* Get current integration time */
   status = vl53l5cx_get_integration_time_ms(config, &integration_time_ms);
   if (status) {
-    printf("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
+    perror("vl53l5cx_get_integration_time_ms failed, status %u\n", status);
     return status;
   }
   printf("Current integration time is : %d ms\n", integration_time_ms);
@@ -692,8 +682,8 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
   }
 
   case SENSOR_VL53L5CX: {
-    struct timespec first_ts, now_ts;
-    clock_gettime(CLOCK_REALTIME, &first_ts);
+    // struct timespec first_ts, now_ts;
+    // clock_gettime(CLOCK_REALTIME, &first_ts);
 
     VL53L5CX_ResultsData results;
     uint8_t isReady = 0;
@@ -710,11 +700,11 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       return -1;
     }
 
-    clock_gettime(CLOCK_REALTIME, &now_ts);
-    uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
-                     (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
-    printf("Checking VL53L: %u мс\n", dt_ms);
-    first_ts = now_ts;
+    // clock_gettime(CLOCK_REALTIME, &now_ts);
+    // uint32_t dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+    //                  (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+    // printf("Checking VL53L: %u мс\n", dt_ms);
+    // first_ts = now_ts;
 
     if (isReady) {
       // Получаем данные
@@ -722,11 +712,11 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
         return -1;
       }
 
-      clock_gettime(CLOCK_REALTIME, &now_ts);
-      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
-              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
-      printf("vl53l5cx_get_ranging_data: %u мс\n", dt_ms);
-      first_ts = now_ts;
+      // clock_gettime(CLOCK_REALTIME, &now_ts);
+      // dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+      //         (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      // printf("vl53l5cx_get_ranging_data: %u мс\n", dt_ms);
+      // first_ts = now_ts;
 
       // Получаем текущее разрешение
       uint8_t resolution = 16;
@@ -740,11 +730,11 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
       // }
       // printf("VL53L5CX: resolution = %d\n", resolution);
 
-      clock_gettime(CLOCK_REALTIME, &now_ts);
-      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
-              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
-      printf("Before creating array: %u мс\n", dt_ms);
-      first_ts = now_ts;
+      // clock_gettime(CLOCK_REALTIME, &now_ts);
+      // dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+      //         (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      // printf("Before creating array: %u мс\n", dt_ms);
+      // first_ts = now_ts;
 
       // Подготавливаем массивы для матричных данных
       uint16_t distances[64];
@@ -756,11 +746,11 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
         statuses[i] = results.target_status[i];
       }
 
-      clock_gettime(CLOCK_REALTIME, &now_ts);
-      dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
-              (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
-      printf("Before writing to shm: %u мс\n", dt_ms);
-      first_ts = now_ts;
+      // clock_gettime(CLOCK_REALTIME, &now_ts);
+      // dt_ms = (now_ts.tv_sec - first_ts.tv_sec) * 1000 +
+      //         (now_ts.tv_nsec - first_ts.tv_nsec) / 1000000;
+      // printf("Before writing to shm: %u мс\n", dt_ms);
+      // first_ts = now_ts;
 
       // Записываем матричные данные в shared memory
       if (write_matrix_to_shm(config, distances, statuses, resolution) == 0) {
@@ -955,10 +945,10 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < sensor_count; i++) {
       if (configs[i].initialized) {
         uint8_t status = read_sensor_data(&configs[i], sensor_data);
-        clock_gettime(CLOCK_REALTIME, &now_ts);
-        dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 +
-                (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
-        printf("Время read_sensor: %u мс\n", dt_ms);
+        // clock_gettime(CLOCK_REALTIME, &now_ts);
+        // dt_ms = (now_ts.tv_sec - last_ts.tv_sec) * 1000 +
+        //         (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+        // printf("Время read_sensor: %u мс\n", dt_ms);
         if (status == 0) {
           if (configs[i].type == SENSOR_VL53L5CX) {
             if (!daemon_mode) {
