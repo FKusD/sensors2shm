@@ -13,18 +13,27 @@
 #include <time.h>
 #include <unistd.h>
 #include <vl53l5cx_api.h>
+#include <vl53l8cx_api.h>
 #include <wiringPi.h>
 
 // Константы для демона
 #define PID_FILE "/run/sensors2shm.pid"
 #define DAEMON_NAME "sensors2shm"
 
-typedef enum { SENSOR_VL53L1X, SENSOR_VL53L5CX, SENSOR_TCS34725 } SensorType;
+typedef enum {
+  SENSOR_VL53L1X,
+  SENSOR_VL53L5CX,
+  SENSOR_VL53L8CX,
+  SENSOR_VL53L8CX_SPI,
+  SENSOR_TCS34725
+} SensorType;
 
 typedef struct {
   SensorType type;
   int xshut_pin;
   uint8_t i2c_addr;
+  uint8_t spi_num;
+  uint8_t spi_cs;
   char shm_name[256]; // Имя shared memory сегмента
   int initialized;    // Флаг инициализации
 
@@ -180,7 +189,8 @@ int check_i2c_device(uint8_t addr) {
 int create_shared_memory(SensorConfig *config) {
   // Определяем размер сегмента в зависимости от типа датчика
   size_t shm_size;
-  if (config->type == SENSOR_VL53L5CX) {
+  if (config->type == SENSOR_VL53L5CX || config->type == SENSOR_VL53L8CX ||
+      config->type == SENSOR_VL53L8CX_SPI) {
     shm_size =
         8 + 64 * 3; // 8 байт заголовка + 64*2 (distances) + 64 (statuses)
   } else {
@@ -432,6 +442,91 @@ int init_vl53l5cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
   return 0;
 }
 
+// VL53L8CX support uses STSW-IMG042 Linux platform code over /dev/i2c-1.
+int init_vl53l8cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
+  uint8_t is_alive = 0;
+  uint8_t status;
+  VL53L8CX_Configuration *config = calloc(1, sizeof(*config));
+
+  if (!config) {
+    perror("Failed to allocate VL53L8CX configuration");
+    return -1;
+  }
+
+  // The ST ULD stores the I2C address in 8-bit form (default: 0x52).
+  config->platform.address = addr;
+  config->platform.fd = open("/dev/i2c-1", O_RDONLY);
+  if (config->platform.fd == -1) {
+    perror("Failed to open /dev/i2c-1 for VL53L8CX");
+    free(config);
+    return -1;
+  }
+
+  status = vl53l8cx_is_alive(config, &is_alive);
+  if (status || !is_alive) {
+    fprintf(stderr, "VL53L8CX not detected at address 0x%02X (status %u)\n",
+            addr >> 1, status);
+    vl53l8cx_comms_close(&config->platform);
+    free(config);
+    return -1;
+  }
+
+  status = vl53l8cx_init(config);
+  if (!status)
+    status = vl53l8cx_set_resolution(config, VL53L8CX_RESOLUTION_8X8);
+  if (!status)
+    status = vl53l8cx_set_ranging_frequency_hz(config, 10);
+  if (status) {
+    fprintf(stderr, "VL53L8CX initialization failed (status %u)\n", status);
+    vl53l8cx_comms_close(&config->platform);
+    free(config);
+    return -1;
+  }
+
+  sensor_config->sensor_config = config;
+  printf("VL53L8CX initialized successfully at address 0x%02X\n", addr >> 1);
+  return 0;
+}
+
+int init_vl53l8cx_spi_sensor(uint8_t spi_num, uint8_t spi_cs,
+                              SensorConfig *sensor_config) {
+  uint8_t is_alive = 0;
+  uint8_t status;
+  VL53L8CX_Configuration *config = calloc(1, sizeof(*config));
+
+  if (!config) {
+    perror("Failed to allocate VL53L8CX SPI configuration");
+    return -1;
+  }
+
+  config->platform.spi_num = spi_num;
+  config->platform.spi_cs = spi_cs;
+  if (vl53l8cx_comms_init(&config->platform) != 0) {
+    fprintf(stderr, "Failed to open /dev/spidev%u.%u\n", spi_num, spi_cs);
+    free(config);
+    return -1;
+  }
+
+  status = vl53l8cx_is_alive(config, &is_alive);
+  if (!status && is_alive)
+    status = vl53l8cx_init(config);
+  if (!status)
+    status = vl53l8cx_set_resolution(config, VL53L8CX_RESOLUTION_8X8);
+  if (!status)
+    status = vl53l8cx_set_ranging_frequency_hz(config, 10);
+  if (status || !is_alive) {
+    fprintf(stderr, "VL53L8CX SPI initialization failed on spidev%u.%u (status %u)\n",
+            spi_num, spi_cs, status);
+    vl53l8cx_comms_close(&config->platform);
+    free(config);
+    return -1;
+  }
+
+  sensor_config->sensor_config = config;
+  printf("VL53L8CX initialized on /dev/spidev%u.%u\n", spi_num, spi_cs);
+  return 0;
+}
+
 int init_gpio(SensorConfig *configs, int sensor_count) {
   if (wiringPiSetupGpio() == -1) {
     perror("Error: wiringPi init");
@@ -441,7 +536,8 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
   // Проверяем корректность конфигурации
   for (int i = 0; i < sensor_count; i++) {
     // Проверяем, что I2C адрес в допустимом диапазоне (0x08-0x77)
-    if (configs[i].i2c_addr < 0x08 || configs[i].i2c_addr > 0x77) {
+    if (configs[i].type != SENSOR_VL53L8CX_SPI &&
+        (configs[i].i2c_addr < 0x08 || configs[i].i2c_addr > 0x77)) {
       perror("Error: Invalid I2C address 0x%02X for sensor %d");
       return -1;
     }
@@ -451,13 +547,28 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
       perror("Error: Invalid GPIO pin %d for sensor %d");
       return -1;
     }
+    if (configs[i].type == SENSOR_VL53L8CX_SPI &&
+        (configs[i].spi_num > 9 || configs[i].spi_cs > 9)) {
+      fprintf(stderr, "Invalid SPI bus/CS for sensor %d\n", i);
+      return -1;
+    }
   }
 
   // Проверяем уникальность I2C адресов
   for (int i = 0; i < sensor_count; i++) {
     for (int j = i + 1; j < sensor_count; j++) {
-      if (configs[i].i2c_addr == configs[j].i2c_addr) {
+      if (configs[i].type != SENSOR_VL53L8CX_SPI &&
+          configs[j].type != SENSOR_VL53L8CX_SPI &&
+          configs[i].i2c_addr == configs[j].i2c_addr) {
         perror("Error: Duplicate I2C address 0x%02X for sensors %d and %d");
+        return -1;
+      }
+      if (configs[i].type == SENSOR_VL53L8CX_SPI &&
+          configs[j].type == SENSOR_VL53L8CX_SPI &&
+          configs[i].spi_num == configs[j].spi_num &&
+          configs[i].spi_cs == configs[j].spi_cs) {
+        fprintf(stderr, "Duplicate SPI device spidev%u.%u\n",
+                configs[i].spi_num, configs[i].spi_cs);
         return -1;
       }
     }
@@ -487,6 +598,18 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
     delay(100); // Ждем загрузки датчика
 
     // Проверяем стандартный адрес 0x29 (0x52 в 7-bit формате)
+    if (configs[i].type == SENSOR_VL53L8CX_SPI) {
+      if (init_vl53l8cx_spi_sensor(configs[i].spi_num, configs[i].spi_cs,
+                                    &configs[i]) == 0 &&
+          create_shared_memory(&configs[i]) == 0) {
+        configs[i].initialized = 1;
+      } else {
+        fprintf(stderr, "Failed to initialize VL53L8CX on spidev%u.%u\n",
+                configs[i].spi_num, configs[i].spi_cs);
+      }
+      continue;
+    }
+
     if (check_i2c_device(0x29) == 0) {
       printf("Found sensor at default address 0x29\n");
 
@@ -541,6 +664,31 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         }
         break;
 
+      case SENSOR_VL53L8CX:
+        printf("init_vl53l8cx_sensor(0x%02X, &configs[%d])\n",
+               configs[i].i2c_addr, i);
+        init_status = init_vl53l8cx_sensor(0x29 << 1, &configs[i]);
+        if (init_status == 0) {
+          if (configs[i].i2c_addr != 0x29) {
+            VL53L8CX_Configuration *config =
+                (VL53L8CX_Configuration *)configs[i].sensor_config;
+            init_status =
+                vl53l8cx_set_i2c_address(config, configs[i].i2c_addr << 1);
+            if (init_status != 0) {
+              fprintf(stderr, "Failed to change VL53L8CX address (status %d)\n",
+                      init_status);
+              break;
+            }
+            printf("VL53L8CX address changed to 0x%02X\n", configs[i].i2c_addr);
+          }
+          if (create_shared_memory(&configs[i]) == 0) {
+            configs[i].initialized = 1;
+          } else {
+            perror("Failed to create shared memory for VL53L8CX");
+          }
+        }
+        break;
+
       case SENSOR_TCS34725:
         // TODO: Реализовать для TCS34725
         printf("TCS34725 initialization not implemented yet\n");
@@ -561,6 +709,10 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         case SENSOR_VL53L5CX:
           init_status =
               init_vl53l5cx_sensor(configs[i].i2c_addr << 1, &configs[i]);
+          break;
+        case SENSOR_VL53L8CX:
+          init_status =
+              init_vl53l8cx_sensor(configs[i].i2c_addr << 1, &configs[i]);
           break;
         case SENSOR_TCS34725:
           // TODO: Реализовать для TCS34725
@@ -615,6 +767,19 @@ void stop_all_sensors(SensorConfig *configs, int sensor_count) {
           vl53l5cx_stop_ranging(config);
           printf("VL53L5CX остановлен (адрес 0x%02X)\n", configs[i].i2c_addr);
           // Освобождаем память
+          free(config);
+          configs[i].sensor_config = NULL;
+        }
+        break;
+      }
+      case SENSOR_VL53L8CX:
+      case SENSOR_VL53L8CX_SPI: {
+        VL53L8CX_Configuration *config =
+            (VL53L8CX_Configuration *)configs[i].sensor_config;
+        if (config) {
+          vl53l8cx_stop_ranging(config);
+          vl53l8cx_comms_close(&config->platform);
+          printf("VL53L8CX stopped (address 0x%02X)\n", configs[i].i2c_addr);
           free(config);
           configs[i].sensor_config = NULL;
         }
@@ -766,6 +931,39 @@ int read_sensor_data(SensorConfig *config, uint8_t *data) {
     return -1;
   }
 
+  case SENSOR_VL53L8CX:
+  case SENSOR_VL53L8CX_SPI: {
+    VL53L8CX_ResultsData results;
+    uint8_t is_ready = 0;
+    uint8_t resolution = 0;
+    VL53L8CX_Configuration *vl53l8cx_config =
+        (VL53L8CX_Configuration *)config->sensor_config;
+
+    if (!vl53l8cx_config ||
+        vl53l8cx_check_data_ready(vl53l8cx_config, &is_ready) != 0 ||
+        !is_ready ||
+        vl53l8cx_get_ranging_data(vl53l8cx_config, &results) != 0 ||
+        vl53l8cx_get_resolution(vl53l8cx_config, &resolution) != 0 ||
+        (resolution != VL53L8CX_RESOLUTION_4X4 &&
+         resolution != VL53L8CX_RESOLUTION_8X8)) {
+      return -1;
+    }
+    uint16_t distances[64];
+    uint8_t statuses[64];
+    for (int i = 0; i < resolution; i++) {
+      distances[i] = results.distance_mm[i];
+      statuses[i] = results.target_status[i];
+    }
+    if (write_matrix_to_shm(config, distances, statuses, resolution) != 0)
+      return -1;
+
+    data[0] = (distances[0] >> 8) & 0xFF;
+    data[1] = distances[0] & 0xFF;
+    data[2] = 0;
+    data[3] = statuses[0];
+    return 0;
+  }
+
   case SENSOR_TCS34725:
     // TODO: Реализовать чтение данных TCS34725
     return -1;
@@ -834,6 +1032,22 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
       continue; // Пропускаем пустые строки после обработки
 
     // Парсим строку
+    if (strncmp(trimmed, "l8cx_spi", 8) == 0) {
+      if (sscanf(trimmed, "%31s %d %hhu %hhu %255s", type_str,
+                 &configs[*count].xshut_pin, &configs[*count].spi_num,
+                 &configs[*count].spi_cs, configs[*count].shm_name) == 5) {
+        configs[*count].type = SENSOR_VL53L8CX_SPI;
+        configs[*count].i2c_addr = 0;
+        printf("Loaded SPI config: spidev%u.%u pin=%d file=%s\n",
+               configs[*count].spi_num, configs[*count].spi_cs,
+               configs[*count].xshut_pin, configs[*count].shm_name);
+        (*count)++;
+      } else {
+        fprintf(stderr, "Invalid VL53L8CX SPI config: %s\n", trimmed);
+      }
+      continue;
+    }
+
     if (sscanf(trimmed, "%31s %d %hhx %255s", type_str,
                &configs[*count].xshut_pin, &configs[*count].i2c_addr,
                configs[*count].shm_name) == 4) {
@@ -843,6 +1057,8 @@ int read_config(const char *config_path, SensorConfig *configs, int *count) {
         configs[*count].type = SENSOR_VL53L1X;
       } else if (strcmp(type_str, "l5cx") == 0) {
         configs[*count].type = SENSOR_VL53L5CX;
+      } else if (strcmp(type_str, "l8cx") == 0) {
+        configs[*count].type = SENSOR_VL53L8CX;
       } else if (strcmp(type_str, "tcs") == 0) {
         configs[*count].type = SENSOR_TCS34725;
       } else {
@@ -913,6 +1129,15 @@ int main(int argc, char *argv[]) {
         }
         break;
       }
+      case SENSOR_VL53L8CX:
+      case SENSOR_VL53L8CX_SPI: {
+        VL53L8CX_Configuration *config =
+            (VL53L8CX_Configuration *)configs[i].sensor_config;
+        if (config) {
+          vl53l8cx_start_ranging(config);
+        }
+        break;
+      }
       case SENSOR_TCS34725:
         // TODO: Запуск для TCS34725
         break;
@@ -950,7 +1175,9 @@ int main(int argc, char *argv[]) {
         //         (now_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
         // printf("Время read_sensor: %u мс\n", dt_ms);
         if (status == 0) {
-          if (configs[i].type == SENSOR_VL53L5CX) {
+          if (configs[i].type == SENSOR_VL53L5CX ||
+              configs[i].type == SENSOR_VL53L8CX ||
+              configs[i].type == SENSOR_VL53L8CX_SPI) {
             if (!daemon_mode) {
               printf("Sensor %d: Matrix data written to shared memory\n", i);
             }
