@@ -693,6 +693,10 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         }
         break;
 
+      case SENSOR_VL53L8CX_SPI:
+        // SPI sensors are initialized before the I2C probe above.
+        break;
+
       case SENSOR_TCS34725:
         // TODO: Реализовать для TCS34725
         printf("TCS34725 initialization not implemented yet\n");
@@ -717,6 +721,9 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
         case SENSOR_VL53L8CX:
           init_status =
               init_vl53l8cx_sensor(configs[i].i2c_addr << 1, &configs[i]);
+          break;
+        case SENSOR_VL53L8CX_SPI:
+          // SPI sensors are initialized before the I2C probe above.
           break;
         case SENSOR_TCS34725:
           // TODO: Реализовать для TCS34725

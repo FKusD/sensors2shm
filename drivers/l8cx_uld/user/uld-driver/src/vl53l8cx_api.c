@@ -520,7 +520,7 @@ uint8_t vl53l8cx_start_ranging(
 	uint32_t i;
 	uint32_t header_config[2] = {0, 0};
 
-	union Block_header *bh_ptr;
+	union VL53L8CX_Block_header *bh_ptr;
 	uint8_t cmd[] = {0x00, 0x03, 0x00, 0x00};
 
 	status |= vl53l8cx_get_resolution(p_dev, &resolution);
@@ -587,7 +587,7 @@ uint8_t vl53l8cx_start_ranging(
 			continue;
 		}
 
-		bh_ptr = (union Block_header *)&(output[i]);
+		bh_ptr = (union VL53L8CX_Block_header *)&(output[i]);
 		if (((uint8_t)bh_ptr->type >= (uint8_t)0x1) 
                     && ((uint8_t)bh_ptr->type < (uint8_t)0x0d))
 		{
@@ -748,7 +748,7 @@ uint8_t vl53l8cx_get_ranging_data(
 {
 	uint8_t status = VL53L8CX_STATUS_OK;
 	uint16_t header_id, footer_id;
-	union Block_header *bh_ptr;
+	union VL53L8CX_Block_header *bh_ptr;
 	uint32_t i, j, msize;
 	status |= VL53L8CX_RdMulti(&(p_dev->platform), 0x0,
 			p_dev->temp_buffer, p_dev->data_read_size);
@@ -759,7 +759,7 @@ uint8_t vl53l8cx_get_ranging_data(
 	for (i = (uint32_t)16; i 
              < (uint32_t)p_dev->data_read_size; i+=(uint32_t)4)
 	{
-		bh_ptr = (union Block_header *)&(p_dev->temp_buffer[i]);
+		bh_ptr = (union VL53L8CX_Block_header *)&(p_dev->temp_buffer[i]);
 		if ((bh_ptr->type > (uint32_t)0x1) 
                     && (bh_ptr->type < (uint32_t)0xd))
 		{

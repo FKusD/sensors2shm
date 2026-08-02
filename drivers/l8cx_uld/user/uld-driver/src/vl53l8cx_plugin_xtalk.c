@@ -57,7 +57,7 @@ static uint8_t _vl53l8cx_program_output_config(
 	uint8_t resolution, status = VL53L8CX_STATUS_OK;
 	uint32_t i;
 	uint32_t header_config[2] = {0, 0};
-	union Block_header *bh_ptr;
+	union VL53L8CX_Block_header *bh_ptr;
 
 	status |= vl53l8cx_get_resolution(p_dev, &resolution);
 	p_dev->data_read_size = 0;
@@ -99,7 +99,7 @@ static uint8_t _vl53l8cx_program_output_config(
 			continue;
 		}
 
-		bh_ptr = (union Block_header *)&(output[i]);
+		bh_ptr = (union VL53L8CX_Block_header *)&(output[i]);
 		if (((uint8_t)bh_ptr->type >= (uint8_t)0x1) 
                     && ((uint8_t)bh_ptr->type < (uint8_t)0x0d))
 		{
