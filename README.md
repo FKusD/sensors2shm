@@ -1,86 +1,46 @@
 # sensors2shm
 
-Демон Raspberry Pi для чтения ToF-датчиков и передачи результатов в POSIX
-shared memory. Текущая конфигурация рассчитана на два VL53L8CX по SPI: это
-быстрый вспомогательный слой управления, независимый от ROS 2/SLAM.
+Minimal daemon for two VL53L8CX sensors over SPI. It publishes 4×4 ranging
+frames at 60 Hz into POSIX shared memory; it does not contain I²C, VL53L1X or
+VL53L5CX support.
 
-## Поддерживаемые датчики
+## Hardware
 
-- `l1x` — VL53L1X по I2C, одно расстояние;
-- `l5cx` — VL53L5CX по I2C, матрица;
-- `l8cx` — VL53L8CX по I2C, матрица;
-- `l8cx_spi` — VL53L8CX по SPI, матрица;
-- `tcs` — зарезервировано для TCS34725, чтение пока не реализовано.
+Both modules share SPI0 MOSI (GPIO10), MISO (GPIO9), SCLK (GPIO11), 3.3 V and
+GND. The modules use separate chip selects configured by:
 
-Для VL53L8CX в этой ветке используется официальный Linux ULD STSW-IMG042
-v2.1.0 из `drivers/l8cx_uld`. Он собирается вместе с программой; отдельная
-установка драйвера ST не нужна.
-
-## Активная схема двух VL53L8CX
-
-`sensors_config.txt` содержит:
-
-```text
-l8cx_spi -1 0 0 vl53l8cx_left
-l8cx_spi -1 0 1 vl53l8cx_right
+```ini
+dtoverlay=spi0-2cs,cs0_pin=22,cs1_pin=23
 ```
 
-Формат строки SPI: `l8cx_spi LPN_GPIO SPI_BUS SPI_CS SHM_NAME`.
-Номера GPIO — BCM, так как используется `wiringPiSetupGpio()`.
-Значение `-1` для `LPN_GPIO` означает, что LPn аппаратно удерживается в HIGH
-и демон не трогает никакой GPIO. Это рекомендуемый вариант, когда GPIO
-назначены аппаратными линиями `NCS` SPI.
+| Sensor | NCS | SPI device | shared memory |
+| --- | --- | --- | --- |
+| left | GPIO22 | `/dev/spidev0.0` | `vl53l8cx_left` |
+| right | GPIO23 | `/dev/spidev0.1` | `vl53l8cx_right` |
 
-| Датчик | LPn | SPI-устройство | NCS | shared memory |
-| --- | --- | --- | --- | --- |
-| левый | аппаратно HIGH | `/dev/spidev0.0` | GPIO 22 (CS0) | `vl53l8cx_left` |
-| правый | аппаратно HIGH | `/dev/spidev0.1` | GPIO 23 (CS1) | `vl53l8cx_right` |
+`LPn` and `SPI_I2C_N` are held HIGH at 3.3 V in hardware. The daemon never
+changes them. SPI runs in mode 3 at 1 MHz by default.
 
-Для SPI у каждого датчика свой NCS, поэтому одинаковый заводской адрес не
-создаёт конфликта. Оба VL53L8CX работают в
-режиме 4×4 с частотой 60 Гц. SPI использует MODE3 (CPOL=1, CPHA=1) и по
-умолчанию 1 МГц. Меньшая матрица выбрана намеренно: для аварийной
-подстраховки важнее минимальная задержка, чем 8×8 зон.
+## Configuration
 
-## Сборка и запуск
+`sensors_config.txt` accepts only this format:
 
-Требуются Raspberry Pi с Linux, `gcc`, `make`, `wiringPi`, включённый SPI и
-доступ к `/dev/spidev0.0` и `/dev/spidev0.1`. В Raspberry Pi OS SPI можно
-включить через `sudo raspi-config` (Interface Options → SPI).
+```text
+l8cx_spi <spi_bus> <spi_cs> <shm_name>
+```
+
+The default configuration contains both sensors. To diagnose one sensor,
+temporarily comment out the other line and restart the service.
+
+## Build and run
 
 ```bash
 make
-sudo ./background_ranging
+sudo systemctl restart sensors2shm.service
+uv run read_sensors.py --once
 ```
 
-Для фонового запуска:
+The systemd unit starts `background_ranging --daemon` and keeps it running.
+Do not launch a second manual instance while the service is active.
 
-```bash
-sudo ./background_ranging --daemon
-```
-
-Быстрая проверка двух опубликованных кадров:
-
-```bash
-python3 read_sensors.py --once
-```
-
-В норме скрипт выводит два кадра `VL53L8CX (SPI), 4x4`; в каждой ячейке
-показаны `distance_mm/status`. Для непрерывного наблюдения запускайте без
-`--once` и закройте ладонью один из датчиков — расстояния соответствующих зон
-должны заметно измениться.
-
-Подробности о демоне — в [README_daemon.md](README_daemon.md), о формате
-данных — в [README_sensors.md](README_sensors.md).
-
-## Shared memory ABI
-
-Для каждого датчика создаются POSIX объекты `/dev/shm/<SHM_NAME>` и
-`/dev/shm/sem.sem_<SHM_NAME>` (POSIX-имя семафора — `/sem_<SHM_NAME>`).
-Заголовок содержит Unix-время, тип датчика,
-разрешение и формат. Для матриц область всегда имеет размер 200 байт:
-8-байтный заголовок, 64 `uint16_t` расстояния и 64 статуса. При 4×4 первые
-16 значений содержат актуальные зоны; `resolution == 16`.
-
-Потребитель обязан брать семафор перед чтением. Сервис APC читает
-`vl53l8cx_left` и `vl53l8cx_right` напрямую, без ROS 2.
+See [README_sensors.md](README_sensors.md) for the shared-memory format.

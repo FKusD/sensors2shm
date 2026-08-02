@@ -1,69 +1,21 @@
 CC := gcc
 
-#L5CX ULD inc paths
-L5CX_CORE_INCLUDE_PATH = -I./drivers/l5cx_uld/user/uld-driver/inc
-L5CX_PLATFORM_INCLUDE_PATH = -I./drivers/l5cx_uld/user/platform
-L5CX_EXAMPLES_INCLUDE_PATH = -I./drivers/l5cx_uld/user/examples
+CPPFLAGS := -DSPI \
+	-I./drivers/l8cx_uld/user/uld-driver/inc \
+	-I./drivers/l8cx_uld/user/platform
+CFLAGS := -Wall -Wextra -Werror -Wno-missing-braces -Wno-unused-parameter -Os -g0
 
-# L8CX Linux ULD (STSW-IMG042, v2.1.0)
-L8CX_CORE_INCLUDE_PATH = -I./drivers/l8cx_uld/user/uld-driver/inc
-L8CX_PLATFORM_INCLUDE_PATH = -I./drivers/l8cx_uld/user/platform
+TARGET := background_ranging
+SOURCES := background_ranging.c \
+	$(wildcard drivers/l8cx_uld/user/uld-driver/src/*.c) \
+	$(wildcard drivers/l8cx_uld/user/platform/*.c)
 
-#L1X API inc paths
-L1X_CORE_INCLUDE_PATH = -I./drivers/l1x_uld/API/core
-L1X_PLATFORM_INCLUDE_PATH = -I./drivers/l1x_uld/API/platform
+.PHONY: all clean
 
-BASE_CFLAGS = -Wall -Werror -Wno-missing-braces
-CFLAGS_RELEASE = -Os -g0
-# STSW-IMG042 platform selection for VL53L8CX.
-CFLAGS_RELEASE += -DSPI
+all: $(TARGET)
 
-# L5CX ULD SOURCES
-L5CX_LIB_CORE_SOURCES =\
-	$(wildcard ./drivers/l5cx_uld/user/uld-driver/src/*.c)
-
-L5CX_LIB_PLATFORM_SOURCES =\
-	$(wildcard ./drivers/l5cx_uld/user/platform/*.c)
-
-L8CX_LIB_CORE_SOURCES =\
-	$(wildcard ./drivers/l8cx_uld/user/uld-driver/src/*.c)
-
-L8CX_LIB_PLATFORM_SOURCES =\
-	$(wildcard ./drivers/l8cx_uld/user/platform/*.c)
-# remove this pls
-L5CX_LIB_EXAMPLES_SOURCES =\
-	$(wildcard ./drivers/l5cx_uld/user/examples/*.c)
-
-# L1X API SOURCES
-L1X_LIB_CORE_SOURCES =\
-	$(wildcard ./drivers/l1x_uld/API/core/*.c)
-
-L1X_LIB_PLATFORM_SOURCES =\
-	$(wildcard ./drivers/l1x_uld/API/platform/*.c)
-
-# L5CX
-L5CX_LIB_SOURCES := $(L5CX_LIB_CORE_SOURCES) $(L5CX_LIB_PLATFORM_SOURCES)# $(L5CX_LIB_EXAMPLES_SOURCES)
-L5CX_INCLUDE_PATH = $(L5CX_CORE_INCLUDE_PATH) $(L5CX_PLATFORM_INCLUDE_PATH) $(L5CX_EXAMPLES_INCLUDE_PATH)
-
-# L8CX
-L8CX_LIB_SOURCES := $(L8CX_LIB_CORE_SOURCES) $(L8CX_LIB_PLATFORM_SOURCES)
-L8CX_INCLUDE_PATH = $(L8CX_CORE_INCLUDE_PATH) $(L8CX_PLATFORM_INCLUDE_PATH)
-
-#L1X
-L1X_LIB_SOURCES := $(L1X_LIB_CORE_SOURCES) $(L1X_LIB_PLATFORM_SOURCES)
-L1X_INCLUDE_PATH = $(L1X_CORE_INCLUDE_PATH) $(L1X_PLATFORM_INCLUDE_PATH)
-
-LIB_SOURCES := $(L5CX_LIB_SOURCES) $(L8CX_LIB_SOURCES) $(L1X_LIB_SOURCES)
-INCLUDE_PATH = $(L5CX_INCLUDE_PATH) $(L8CX_INCLUDE_PATH) $(L1X_INCLUDE_PATH)
-
-CFLAGS = $(BASE_CFLAGS) $(CFLAGS_RELEASE) $(INCLUDE_PATH)
-
-TARGET = background_ranging
-
-LIBS = -lwiringPi
-
-all:
-	$(CC) $(CFLAGS) -o background_ranging ./background_ranging.c $(LIB_SOURCES) $(LIBS)
+$(TARGET): $(SOURCES)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $(SOURCES)
 
 clean:
 	rm -f $(TARGET)
