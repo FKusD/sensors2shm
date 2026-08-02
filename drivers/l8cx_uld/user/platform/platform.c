@@ -38,7 +38,9 @@
 #ifdef SPI
 #define VL53L8_SPIDEV_CHUNK_SIZE   4096 - 2 // 4096 is the SPIDEV limit, 2 for register index
 			 
-#define VL53L8CX_SPI_MODE  SPI_MODE_0
+// VL53L8CX captures data on the rising edge and propagates it on the falling
+// edge (CPOL=1, CPHA=1): Linux SPI mode 3.
+#define VL53L8CX_SPI_MODE  SPI_MODE_3
 #ifndef VL53L8CX_SPI_SPEED_HZ
 #define VL53L8CX_SPI_SPEED_HZ  1000000
 #endif
