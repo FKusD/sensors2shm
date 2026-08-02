@@ -39,7 +39,9 @@
 #define VL53L8_SPIDEV_CHUNK_SIZE   4096 - 2 // 4096 is the SPIDEV limit, 2 for register index
 			 
 #define VL53L8CX_SPI_MODE  SPI_MODE_0
-#define VL53L8CX_SPI_SPEED_HZ  2000000
+#ifndef VL53L8CX_SPI_SPEED_HZ
+#define VL53L8CX_SPI_SPEED_HZ  1000000
+#endif
 #define VL53L8CX_SPI_NB_BITS   8
 #endif									  
 
@@ -90,7 +92,7 @@ int32_t vl53l8cx_comms_init(VL53L8CX_Platform * p_platform)
 		return VL53L8CX_COMMS_ERROR;
 	}
 	else
-		LOG("Opened SPI %s\n", devname);
+		LOG("Opened SPI %s at %u Hz\n", devname, speed);
 
 	if (ioctl(p_platform->fd, SPI_IOC_WR_MODE, &spi_mode) <0) {
 		LOG("Could not program clock phase and polarity (WR)\n");
