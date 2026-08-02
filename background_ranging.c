@@ -19,6 +19,8 @@
 // Константы для демона
 #define PID_FILE "/run/sensors2shm.pid"
 #define DAEMON_NAME "sensors2shm"
+#define VL53L8CX_RANGING_RESOLUTION VL53L8CX_RESOLUTION_4X4
+#define VL53L8CX_RANGING_FREQUENCY_HZ 60
 
 typedef enum {
   SENSOR_VL53L1X,
@@ -473,9 +475,10 @@ int init_vl53l8cx_sensor(uint8_t addr, SensorConfig *sensor_config) {
 
   status = vl53l8cx_init(config);
   if (!status)
-    status = vl53l8cx_set_resolution(config, VL53L8CX_RESOLUTION_8X8);
+    status = vl53l8cx_set_resolution(config, VL53L8CX_RANGING_RESOLUTION);
   if (!status)
-    status = vl53l8cx_set_ranging_frequency_hz(config, 10);
+    status = vl53l8cx_set_ranging_frequency_hz(config,
+                                                 VL53L8CX_RANGING_FREQUENCY_HZ);
   if (status) {
     fprintf(stderr, "VL53L8CX initialization failed (status %u)\n", status);
     vl53l8cx_comms_close(&config->platform);
@@ -511,9 +514,10 @@ int init_vl53l8cx_spi_sensor(uint8_t spi_num, uint8_t spi_cs,
   if (!status && is_alive)
     status = vl53l8cx_init(config);
   if (!status)
-    status = vl53l8cx_set_resolution(config, VL53L8CX_RESOLUTION_8X8);
+    status = vl53l8cx_set_resolution(config, VL53L8CX_RANGING_RESOLUTION);
   if (!status)
-    status = vl53l8cx_set_ranging_frequency_hz(config, 10);
+    status = vl53l8cx_set_ranging_frequency_hz(config,
+                                                 VL53L8CX_RANGING_FREQUENCY_HZ);
   if (status || !is_alive) {
     fprintf(stderr, "VL53L8CX SPI initialization failed on spidev%u.%u (status %u)\n",
             spi_num, spi_cs, status);
