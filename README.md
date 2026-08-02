@@ -54,6 +54,17 @@ sudo ./background_ranging
 sudo ./background_ranging --daemon
 ```
 
+Быстрая проверка двух опубликованных кадров:
+
+```bash
+python3 read_sensors.py --once
+```
+
+В норме скрипт выводит два кадра `VL53L8CX (SPI), 4x4`; в каждой ячейке
+показаны `distance_mm/status`. Для непрерывного наблюдения запускайте без
+`--once` и закройте ладонью один из датчиков — расстояния соответствующих зон
+должны заметно измениться.
+
 Подробности о демоне — в [README_daemon.md](README_daemon.md), о формате
 данных — в [README_sensors.md](README_sensors.md).
 
