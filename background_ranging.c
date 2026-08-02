@@ -504,6 +504,7 @@ int init_vl53l8cx_spi_sensor(uint8_t spi_num, uint8_t spi_cs,
                               SensorConfig *sensor_config) {
   uint8_t is_alive = 0;
   uint8_t status;
+  const char *stage = "device identification";
   VL53L8CX_Configuration *config = calloc(1, sizeof(*config));
 
   if (!config) {
@@ -520,16 +521,24 @@ int init_vl53l8cx_spi_sensor(uint8_t spi_num, uint8_t spi_cs,
   }
 
   status = vl53l8cx_is_alive(config, &is_alive);
-  if (!status && is_alive)
+  if (!status && is_alive) {
+    stage = "ULD initialization";
     status = vl53l8cx_init(config);
-  if (!status)
+  }
+  if (!status && is_alive) {
+    stage = "resolution setup";
     status = vl53l8cx_set_resolution(config, VL53L8CX_RANGING_RESOLUTION);
-  if (!status)
+  }
+  if (!status && is_alive) {
+    stage = "frequency setup";
     status = vl53l8cx_set_ranging_frequency_hz(config,
                                                  VL53L8CX_RANGING_FREQUENCY_HZ);
+  }
   if (status || !is_alive) {
-    fprintf(stderr, "VL53L8CX SPI initialization failed on spidev%u.%u (status %u)\n",
-            spi_num, spi_cs, status);
+    fprintf(stderr,
+            "VL53L8CX SPI initialization failed on spidev%u.%u at %s "
+            "(status %u, alive %u)\n",
+            spi_num, spi_cs, stage, status, is_alive);
     vl53l8cx_comms_close(&config->platform);
     free(config);
     return -1;
