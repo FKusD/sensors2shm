@@ -149,7 +149,7 @@ int32_t vl53l8cx_comms_close(VL53L8CX_Platform * p_platform)
 	return 0;
 }
 
-int32_t write_read_multi(
+static int32_t vl53l8cx_write_read_multi(
 		int fd,
 		uint16_t i2c_address,
 		uint16_t reg_address,
@@ -285,24 +285,24 @@ int32_t write_read_multi(
 	return 0;
 }
 
-int32_t write_multi(
+static int32_t vl53l8cx_write_multi(
 		int fd,
 		uint16_t i2c_address,
 		uint16_t reg_address,
 		uint8_t *pdata,
 		uint32_t count)
 {
-	return(write_read_multi(fd, i2c_address, reg_address, pdata, count, 1));
+	return(vl53l8cx_write_read_multi(fd, i2c_address, reg_address, pdata, count, 1));
 }
 
-int32_t read_multi(
+static int32_t vl53l8cx_read_multi(
 		int fd,
 		uint16_t i2c_address,
 		uint16_t reg_address,
 		uint8_t *pdata,
 		uint32_t count)
 {
-	return(write_read_multi(fd, i2c_address, reg_address, pdata, count, 0));
+	return(vl53l8cx_write_read_multi(fd, i2c_address, reg_address, pdata, count, 0));
 }
 
 uint8_t VL53L8CX_RdByte(
@@ -310,7 +310,7 @@ uint8_t VL53L8CX_RdByte(
 		uint16_t reg_address,
 		uint8_t *p_value)
 {
-	return(read_multi(p_platform->fd, p_platform->address, reg_address, p_value, 1));
+	return(vl53l8cx_read_multi(p_platform->fd, p_platform->address, reg_address, p_value, 1));
 }
 
 uint8_t VL53L8CX_WrByte(
@@ -318,7 +318,7 @@ uint8_t VL53L8CX_WrByte(
 		uint16_t reg_address,
 		uint8_t value)
 {
-	return(write_multi(p_platform->fd, p_platform->address, reg_address, &value, 1));
+	return(vl53l8cx_write_multi(p_platform->fd, p_platform->address, reg_address, &value, 1));
 }
 
 uint8_t VL53L8CX_RdMulti(
@@ -327,7 +327,7 @@ uint8_t VL53L8CX_RdMulti(
 		uint8_t *p_values,
 		uint32_t size)
 {
-	return(read_multi(p_platform->fd, p_platform->address, reg_address, p_values, size));
+	return(vl53l8cx_read_multi(p_platform->fd, p_platform->address, reg_address, p_values, size));
 }
 
 uint8_t VL53L8CX_WrMulti(
@@ -336,7 +336,7 @@ uint8_t VL53L8CX_WrMulti(
 		uint8_t *p_values,
 		uint32_t size)
 {
-	return(write_multi(p_platform->fd, p_platform->address, reg_address, p_values, size));
+	return(vl53l8cx_write_multi(p_platform->fd, p_platform->address, reg_address, p_values, size));
 }
 
 void VL53L8CX_SwapBuffer(
