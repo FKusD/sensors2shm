@@ -199,9 +199,15 @@ int create_shared_memory(SensorConfig *config) {
     shm_size = sizeof(SensorData); // Для одиночных датчиков
   }
 
+  // POSIX shared-memory object names must start with '/'.  The configuration
+  // deliberately stores only the basename used by clients in /dev/shm.
+  char posix_shm_name[258];
+  snprintf(posix_shm_name, sizeof(posix_shm_name), "/%.255s",
+           config->shm_name);
+
   // Создаем shared memory сегмент
   config->shm_fd =
-      shm_open(config->shm_name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+      shm_open(posix_shm_name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
   if (config->shm_fd == -1) {
     perror("shm_open failed");
     return -1;
@@ -333,7 +339,10 @@ void close_shared_memory(SensorConfig *config) {
   }
 
   // Удаляем shared memory сегмент
-  shm_unlink(config->shm_name);
+  char posix_shm_name[258];
+  snprintf(posix_shm_name, sizeof(posix_shm_name), "/%.255s",
+           config->shm_name);
+  shm_unlink(posix_shm_name);
   printf("Shared memory закрыт: %s\n", config->shm_name);
 
   // Закрываем и удаляем семафор
