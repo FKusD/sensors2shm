@@ -555,8 +555,11 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
       return -1;
     }
 
-    // Проверяем, что GPIO пин в допустимом диапазоне
-    if (configs[i].xshut_pin < 0 || configs[i].xshut_pin > 40) {
+    // Для SPI LPn может быть аппаратно подтянут к питанию. В таком случае
+    // используется -1: GPIO не настраивается и не изменяется программой.
+    int min_xshut_pin = configs[i].type == SENSOR_VL53L8CX_SPI ? -1 : 0;
+    if (configs[i].xshut_pin < min_xshut_pin ||
+        configs[i].xshut_pin > 40) {
       perror("Error: Invalid GPIO pin %d for sensor %d");
       return -1;
     }
@@ -587,10 +590,14 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
     }
   }
 
-  // Сначала все пины XSHUT устанавливаем в LOW (выключаем все датчики)
+  // Сначала все программно управляемые пины XSHUT устанавливаем в LOW.
+  // SPI-датчики с xshut_pin == -1 держат LPn аппаратно в HIGH и этот GPIO
+  // намеренно не трогают: он может быть назначен линией NCS.
   for (int i = 0; i < sensor_count; i++) {
-    pinMode(configs[i].xshut_pin, OUTPUT);
-    digitalWrite(configs[i].xshut_pin, LOW);
+    if (configs[i].xshut_pin >= 0) {
+      pinMode(configs[i].xshut_pin, OUTPUT);
+      digitalWrite(configs[i].xshut_pin, LOW);
+    }
     configs[i].initialized = 0;
     configs[i].sensor_config = NULL; // Инициализируем указатель на конфигурацию
     configs[i].shm_fd = -1;
@@ -606,9 +613,11 @@ int init_gpio(SensorConfig *configs, int sensor_count) {
     printf("Checking sensor %d (pin %d, addr 0x%02X)...", i,
            configs[i].xshut_pin, configs[i].i2c_addr);
 
-    // Включаем текущий датчик
-    digitalWrite(configs[i].xshut_pin, HIGH);
-    delay(100); // Ждем загрузки датчика
+    // Включаем текущий датчик, если LPn управляется Raspberry Pi.
+    if (configs[i].xshut_pin >= 0) {
+      digitalWrite(configs[i].xshut_pin, HIGH);
+      delay(100); // Ждем загрузки датчика
+    }
 
     // Проверяем стандартный адрес 0x29 (0x52 в 7-bit формате)
     if (configs[i].type == SENSOR_VL53L8CX_SPI) {
@@ -813,8 +822,9 @@ void stop_all_sensors(SensorConfig *configs, int sensor_count) {
       // Закрываем shared memory для датчика
       close_shared_memory(&configs[i]);
 
-      // Выключаем питание датчика
-      digitalWrite(configs[i].xshut_pin, LOW);
+      // Выключаем датчик, только если его LPn управляется Raspberry Pi.
+      if (configs[i].xshut_pin >= 0)
+        digitalWrite(configs[i].xshut_pin, LOW);
     }
   }
 

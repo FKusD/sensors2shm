@@ -1,9 +1,10 @@
 # Format: <type> <xshut_gpio> <address/bus> <name>.
 # Types: l1x (VL53L1X), l5cx (VL53L5CX), l8cx (VL53L8CX I2C),
-# l8cx_spi (VL53L8CX SPI: <xshut_gpio> <spi_bus> <spi_cs> <shm_name>).
+# l8cx_spi (VL53L8CX SPI: <lpn_gpio|-1> <spi_bus> <spi_cs> <shm_name>).
+# Use -1 when LPn is held HIGH in hardware; the daemon will not touch a GPIO.
 
-# Left VL53L8CX: GPIO 22, /dev/spidev0.0
-l8cx_spi 22 0 0 vl53l8cx_left
+# LPn and SPI_I2C_N are held at 3.3 V on both modules.
+# NCS uses the custom SPI0 chip selects: GPIO22 for CS0, GPIO23 for CS1.
+l8cx_spi -1 0 0 vl53l8cx_left
 
-# Right VL53L8CX: GPIO 23, /dev/spidev0.1
-l8cx_spi 23 0 1 vl53l8cx_right
+l8cx_spi -1 0 1 vl53l8cx_right

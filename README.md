@@ -21,19 +21,23 @@ v2.1.0 из `drivers/l8cx_uld`. Он собирается вместе с про
 `sensors_config.txt` содержит:
 
 ```text
-l8cx_spi 22 0 0 vl53l8cx_left
-l8cx_spi 23 0 1 vl53l8cx_right
+l8cx_spi -1 0 0 vl53l8cx_left
+l8cx_spi -1 0 1 vl53l8cx_right
 ```
 
-Формат строки SPI: `l8cx_spi XSHUT_GPIO SPI_BUS SPI_CS SHM_NAME`.
+Формат строки SPI: `l8cx_spi LPN_GPIO SPI_BUS SPI_CS SHM_NAME`.
 Номера GPIO — BCM, так как используется `wiringPiSetupGpio()`.
+Значение `-1` для `LPN_GPIO` означает, что LPn аппаратно удерживается в HIGH
+и демон не трогает никакой GPIO. Это рекомендуемый вариант, когда GPIO
+назначены аппаратными линиями `NCS` SPI.
 
-| Датчик | XSHUT | SPI-устройство | shared memory |
-| --- | ---: | --- | --- |
-| левый | GPIO 22 | `/dev/spidev0.0` | `vl53l8cx_left` |
-| правый | GPIO 23 | `/dev/spidev0.1` | `vl53l8cx_right` |
+| Датчик | LPn | SPI-устройство | NCS | shared memory |
+| --- | --- | --- | --- | --- |
+| левый | аппаратно HIGH | `/dev/spidev0.0` | GPIO 22 (CS0) | `vl53l8cx_left` |
+| правый | аппаратно HIGH | `/dev/spidev0.1` | GPIO 23 (CS1) | `vl53l8cx_right` |
 
-Оба VL53L8CX инициализируются последовательно через XSHUT, работают в
+Для SPI у каждого датчика свой NCS, поэтому одинаковый заводской адрес не
+создаёт конфликта. Оба VL53L8CX работают в
 режиме 4×4 с частотой 60 Гц. SPI использует MODE3 (CPOL=1, CPHA=1) и по
 умолчанию 1 МГц. Меньшая матрица выбрана намеренно: для аварийной
 подстраховки важнее минимальная задержка, чем 8×8 зон.
