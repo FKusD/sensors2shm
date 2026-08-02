@@ -1,15 +1,9 @@
-# Формат: тип_датчика пин_xshut i2c_адрес имя_файла
-# Типы датчиков: l1x (VL53L1X), l5cx (VL53L5CX), tcs (TCS34725)
-# I2C адрес в шестнадцатеричном формате (например, 0x29 = стандартный адрес)
+# Format: <type> <xshut_gpio> <address/bus> <name>.
+# Types: l1x (VL53L1X), l5cx (VL53L5CX), l8cx (VL53L8CX I2C),
+# l8cx_spi (VL53L8CX SPI: <xshut_gpio> <spi_bus> <spi_cs> <shm_name>).
 
-# Левый VL53L1X датчик
-#l1x 17 0x32 vl53l1x_left
-
-# right l1x
-#l1x 22 0x33 vl53l1x_right
-
-# Левый VL53L5CX датчик  
+# Left VL53L8CX: GPIO 22, /dev/spidev0.0
 l8cx_spi 22 0 0 vl53l8cx_left
 
-# right VL53L5CX
+# Right VL53L8CX: GPIO 23, /dev/spidev0.1
 l8cx_spi 23 0 1 vl53l8cx_right

@@ -1,177 +1,63 @@
-# Sensors2SHM Daemon
+# Демон sensors2shm
 
-Демон для работы с датчиками VL53L1X, VL53L5CX и TCS34725 с использованием shared memory.
+`background_ranging` сначала инициализирует датчики и запускает ranging, а
+затем при ключе `--daemon` отделяется от терминала. PID-файл создаётся в
+`/run/sensors2shm.pid`; при SIGINT или SIGTERM датчики останавливаются,
+shared memory и семафоры освобождаются, PID-файл удаляется.
 
-## Описание
-
-Программа `background_ranging` была модифицирована для работы в режиме демона. Демон автоматически отключается от терминала **ПОСЛЕ инициализации и запуска всех датчиков** и продолжает работу в фоновом режиме.
-
-## Особенности демона
-
-- **Демонизация после инициализации** - датчики инициализируются и запускаются до отключения от терминала
-- **PID файл** - создается файл `/var/run/sensors2shm.pid` для отслеживания процесса
-- **Корректное завершение** - обработка сигналов SIGINT и SIGTERM
-- **Проверка дублирования** - предотвращает запуск нескольких экземпляров
-- **Без логирования** - отсутствие записи в файлы для защиты SD карты Raspberry Pi
-
-## Компиляция
+## Запуск
 
 ```bash
-# Компилируем программу
+cd /path/to/sensors2shm
 make
-
-# Или вручную:
-gcc -o background_ranging background_ranging.c -lwiringPi -lpthread -lrt
+sudo ./background_ranging --daemon
 ```
 
-## Использование
-
-### Запуск в режиме демона
+Для диагностики запускайте без `--daemon`, чтобы видеть вывод
+инициализации:
 
 ```bash
-# Запуск демона
-./background_ranging --daemon
-
-# Или через скрипт управления
-./sensors2shm.sh start
+sudo ./background_ranging
 ```
 
-### Запуск в обычном режиме
+Конфигурация всегда читается из `./sensors_config.txt`, поэтому в unit-файле
+нужно указать `WorkingDirectory` репозитория/установочной директории.
 
-```bash
-# Запуск с выводом в терминал
-./background_ranging
-```
-
-### Управление демоном
-
-Используйте скрипт `sensors2shm.sh` для управления демоном:
-
-```bash
-# Запуск демона
-./sensors2shm.sh start
-
-# Остановка демона
-./sensors2shm.sh stop
-
-# Перезапуск демона
-./sensors2shm.sh restart
-
-# Проверка статуса
-./sensors2shm.sh status
-```
-
-## Файлы демона
-
-- **PID файл**: `/var/run/sensors2shm.pid` - содержит PID процесса демона
-- **Конфигурация**: `./sensors_config.txt` - конфигурация датчиков
-
-## Права доступа
-
-Для корректной работы демона могут потребоваться права root:
-
-```bash
-# Создание директории для PID файлов
-sudo mkdir -p /var/run
-
-# Установка прав доступа для PID файла
-sudo chown root:root /var/run/sensors2shm.pid
-sudo chmod 644 /var/run/sensors2shm.pid
-```
-
-## Автозапуск
-
-Для автоматического запуска демона при загрузке системы создайте systemd сервис:
-
-### Создание systemd сервиса
-
-Создайте файл `/etc/systemd/system/sensors2shm.service`:
+## Пример systemd unit
 
 ```ini
 [Unit]
-Description=Sensors2SHM Daemon
-After=network.target
+Description=sensors2shm ranging daemon
+After=local-fs.target
 
 [Service]
 Type=forking
-ExecStart=/path/to/sensors2shm.sh start
-ExecStop=/path/to/sensors2shm.sh stop
-Restart=always
+WorkingDirectory=/opt/sensors2shm
+ExecStart=/opt/sensors2shm/background_ranging --daemon
+PIDFile=/run/sensors2shm.pid
+Restart=on-failure
 User=root
-WorkingDirectory=/path/to/sensors2shm
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-### Активация сервиса
+После установки:
 
 ```bash
-# Перезагрузка systemd
 sudo systemctl daemon-reload
-
-# Включение автозапуска
-sudo systemctl enable sensors2shm
-
-# Запуск сервиса
-sudo systemctl start sensors2shm
-
-# Проверка статуса
-sudo systemctl status sensors2shm
+sudo systemctl enable --now sensors2shm.service
+sudo systemctl status sensors2shm.service
 ```
 
-## Мониторинг
+## Диагностика SPI
 
-### Проверка процессов
+Проверьте, что SPI включён и оба устройства доступны:
 
 ```bash
-# Проверка PID файла
-cat /var/run/sensors2shm.pid
-
-# Проверка процесса
-ps aux | grep background_ranging
-
-# Проверка shared memory
-ls -la /dev/shm/ | grep sensor
+ls -l /dev/spidev0.0 /dev/spidev0.1
 ```
 
-## Устранение неполадок
-
-### Демон не запускается
-
-1. Проверьте права доступа к файлам
-2. Убедитесь, что I2C включен: `sudo raspi-config`
-3. Проверьте подключение датчиков: `i2cdetect -y 1`
-4. Запустите в обычном режиме для отладки: `./background_ranging`
-
-### Демон завершается
-
-1. Проверьте конфигурацию датчиков в `sensors_config.txt`
-2. Убедитесь, что GPIO пины не заняты другими процессами
-3. Проверьте доступность I2C шины
-
-### Проблемы с shared memory
-
-```bash
-# Очистка shared memory
-sudo rm -f /dev/shm/sensor_*
-
-# Проверка семафоров
-ls -la /dev/shm/ | grep sem
-```
-
-## Сигналы
-
-Демон обрабатывает следующие сигналы:
-
-- **SIGINT** (Ctrl+C) - корректное завершение
-- **SIGTERM** - корректное завершение
-- **SIGHUP** - перезагрузка конфигурации (не реализовано)
-
-## Безопасность
-
-- Демон работает от имени root для доступа к GPIO и I2C
-- PID файл защищен правами доступа
-- Проверка дублирования предотвращает запуск нескольких экземпляров
-- Корректное освобождение ресурсов при завершении
-- **Отсутствие логирования для защиты SD карты Raspberry Pi** 
+Если один VL53L8CX не обнаруживается, сначала проверьте его питание, XSHUT
+и CS. Два датчика имеют один и тот же заводской адрес, поэтому их нельзя
+инициализировать одновременно без последовательного управления XSHUT.
