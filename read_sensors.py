@@ -15,6 +15,8 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 RESOLUTION = 16
 FRAME_SIZE = HEADER_SIZE + 64 * 2 + 64
 SENSOR_TYPE_VL53L8CX_SPI = 3
+DISTANCES_OFFSET = HEADER_SIZE
+STATUSES_OFFSET = DISTANCES_OFFSET + 64 * 2
 
 
 def read_frame(name: str) -> tuple[int, list[int], list[int]]:
@@ -47,8 +49,9 @@ def read_frame(name: str) -> tuple[int, list[int], list[int]]:
             f"unexpected frame header: type={sensor_type}, "
             f"resolution={resolution}, format={data_format}"
         )
-    distances = list(struct.unpack_from("<16H", raw, HEADER_SIZE))
-    statuses = list(raw[HEADER_SIZE + 32 : HEADER_SIZE + 48])
+    distances = list(struct.unpack_from("<16H", raw, DISTANCES_OFFSET))
+    # The C frame always reserves 64 distance slots, even for a 4x4 frame.
+    statuses = list(raw[STATUSES_OFFSET : STATUSES_OFFSET + RESOLUTION])
     return timestamp, distances, statuses
 
 
