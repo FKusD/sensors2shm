@@ -42,7 +42,7 @@
 // edge (CPOL=1, CPHA=1): Linux SPI mode 3.
 #define VL53L8CX_SPI_MODE  SPI_MODE_3
 #ifndef VL53L8CX_SPI_SPEED_HZ
-#define VL53L8CX_SPI_SPEED_HZ  1000000
+#define VL53L8CX_SPI_SPEED_HZ  3000000
 #endif
 #define VL53L8CX_SPI_NB_BITS   8
 #endif									  
