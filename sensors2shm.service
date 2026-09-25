@@ -3,12 +3,10 @@ Description=VL53L8CX SPI shared-memory daemon
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=/home/pi/sensors2shm/background_ranging --daemon
-ExecStop=/bin/kill -TERM $MAINPID
-PIDFile=/run/sensors2shm.pid
-Restart=always
-RestartSec=10
+Type=simple
+ExecStart=/home/pi/sensors2shm/background_ranging
+Restart=on-failure
+RestartSec=2
 User=root
 WorkingDirectory=/home/pi/sensors2shm
 

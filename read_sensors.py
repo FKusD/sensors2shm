@@ -19,7 +19,7 @@ DISTANCES_OFFSET = HEADER_SIZE
 STATUSES_OFFSET = DISTANCES_OFFSET + 64 * 2
 
 
-def read_frame(name: str) -> tuple[int, list[int], list[int]]:
+def read_frame(name: str) -> tuple[int, int, list[int], list[int]]:
     fd = os.open(f"/dev/shm/{name}", os.O_RDONLY)
     try:
         memory = mmap.mmap(fd, FRAME_SIZE, mmap.MAP_SHARED, mmap.PROT_READ)
@@ -37,7 +37,7 @@ def read_frame(name: str) -> tuple[int, list[int], list[int]]:
     finally:
         os.close(fd)
 
-    timestamp, sensor_type, resolution, data_format, _ = struct.unpack_from(
+    timestamp, sensor_type, resolution, data_format, abi_version = struct.unpack_from(
         HEADER_FORMAT, raw
     )
     if (sensor_type, resolution, data_format) != (
@@ -52,12 +52,16 @@ def read_frame(name: str) -> tuple[int, list[int], list[int]]:
     distances = list(struct.unpack_from("<16H", raw, DISTANCES_OFFSET))
     # The C frame always reserves 64 distance slots, even for a 4x4 frame.
     statuses = list(raw[STATUSES_OFFSET : STATUSES_OFFSET + RESOLUTION])
-    return timestamp, distances, statuses
+    return timestamp, abi_version, distances, statuses
 
 
 def print_frame(name: str) -> None:
-    timestamp, distances, statuses = read_frame(name)
-    label = time.strftime("%H:%M:%S", time.localtime(timestamp))
+    timestamp, abi_version, distances, statuses = read_frame(name)
+    if abi_version == 2:
+        age_ms = ((time.monotonic_ns() // 1_000_000) - timestamp) & 0xFFFFFFFF
+        label = f"age={age_ms} ms"
+    else:
+        label = time.strftime("%H:%M:%S", time.localtime(timestamp))
     print(f"{name} [{label}] VL53L8CX SPI 4x4:")
     for row in range(4):
         offset = row * 4

@@ -21,9 +21,10 @@
 #define SENSOR_TYPE_VL53L8CX_SPI 3U
 #define RESOLUTION VL53L8CX_RESOLUTION_4X4
 #define RANGING_FREQUENCY_HZ 60U
+#define FRAME_WATCHDOG_MS 2000U
 
 typedef struct {
-  uint32_t timestamp_sec;
+  uint32_t timestamp_ms32;
   uint8_t sensor_type;
   uint8_t resolution;
   uint8_t data_format;
@@ -41,6 +42,9 @@ typedef struct {
   sem_t *semaphore;
   VL53L8CX_Configuration *uld;
   bool ranging;
+  uint64_t last_frame_ms;
+  uint32_t read_errors_since_frame;
+  int last_read_error;
 } Sensor;
 
 static volatile sig_atomic_t running = 1;
@@ -57,6 +61,15 @@ static void sleep_ms(long milliseconds) {
   };
   while (nanosleep(&delay, &delay) != 0 && errno == EINTR) {
   }
+}
+
+static uint64_t monotonic_ms(void) {
+  struct timespec now;
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+    perror("clock_gettime(CLOCK_MONOTONIC)");
+    exit(EXIT_FAILURE);
+  }
+  return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
 }
 
 static int daemonize(void) {
@@ -235,26 +248,25 @@ static int publish_frame(Sensor *sensor) {
   uint8_t ready = 0;
   uint8_t status = vl53l8cx_check_data_ready(sensor->uld, &ready);
   if (status != 0)
-    return -1;
+    return -100 - status;
   if (ready == 0)
     return 0;
 
   VL53L8CX_ResultsData results;
   status = vl53l8cx_get_ranging_data(sensor->uld, &results);
   if (status != 0)
-    return -1;
+    return -200 - status;
 
+  const uint32_t frame_timestamp_ms = (uint32_t)monotonic_ms();
   while (sem_wait(sensor->semaphore) != 0) {
     if (errno != EINTR)
-      return -1;
+      return -300 - errno;
   }
-  struct timespec timestamp;
-  clock_gettime(CLOCK_REALTIME, &timestamp);
-  sensor->frame->timestamp_sec = (uint32_t)timestamp.tv_sec;
+  sensor->frame->timestamp_ms32 = frame_timestamp_ms;
   sensor->frame->sensor_type = SENSOR_TYPE_VL53L8CX_SPI;
   sensor->frame->resolution = RESOLUTION;
   sensor->frame->data_format = 1;
-  sensor->frame->reserved = 0;
+  sensor->frame->reserved = 2; /* fdrive8 monotonic-ms shared-memory ABI */
   for (size_t zone = 0; zone < RESOLUTION; ++zone) {
     sensor->frame->distances[zone] = results.distance_mm[zone];
     sensor->frame->statuses[zone] = results.target_status[zone];
@@ -335,14 +347,14 @@ int main(int argc, char *argv[]) {
   if (parse_config("sensors_config.txt", sensors, &sensor_count) != 0)
     return EXIT_FAILURE;
 
-  size_t active_count = 0;
   for (size_t index = 0; index < sensor_count; ++index) {
-    if (initialize_sensor(&sensors[index]) == 0)
-      ++active_count;
-  }
-  if (active_count == 0) {
-    fprintf(stderr, "No VL53L8CX sensor initialized\n");
-    return EXIT_FAILURE;
+    if (initialize_sensor(&sensors[index]) != 0) {
+      fprintf(stderr, "VL53L8CX startup incomplete: sensor %zu unavailable\n",
+              index);
+      for (size_t previous = 0; previous < sensor_count; ++previous)
+        close_sensor(&sensors[previous]);
+      return EXIT_FAILURE;
+    }
   }
 
   if (daemon_mode) {
@@ -355,20 +367,43 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  const uint64_t startup_ms = monotonic_ms();
+  for (size_t index = 0; index < sensor_count; ++index)
+    sensors[index].last_frame_ms = startup_ms;
+
+  int exit_status = EXIT_SUCCESS;
   while (running) {
     for (size_t index = 0; index < sensor_count; ++index) {
-      if (!sensors[index].ranging)
-        continue;
-      if (publish_frame(&sensors[index]) < 0 && !daemon_mode)
-        fprintf(stderr, "Read failed for spidev%u.%u\n", sensors[index].spi_bus,
-                sensors[index].spi_cs);
+      Sensor *sensor = &sensors[index];
+      int result = publish_frame(sensor);
+      uint64_t now_ms = monotonic_ms();
+      if (result > 0) {
+        sensor->last_frame_ms = now_ms;
+        sensor->read_errors_since_frame = 0;
+        sensor->last_read_error = 0;
+      } else if (result < 0) {
+        ++sensor->read_errors_since_frame;
+        sensor->last_read_error = result;
+      }
+      if (now_ms - sensor->last_frame_ms >= FRAME_WATCHDOG_MS) {
+        fprintf(stderr,
+                "VL53L8CX spidev%u.%u stalled for %llu ms: %u read errors, "
+                "last error %d; restarting service\n",
+                sensor->spi_bus, sensor->spi_cs,
+                (unsigned long long)(now_ms - sensor->last_frame_ms),
+                sensor->read_errors_since_frame, sensor->last_read_error);
+        exit_status = EXIT_FAILURE;
+        running = 0;
+        break;
+      }
     }
-    sleep_ms(5);
+    if (running)
+      sleep_ms(5);
   }
 
   for (size_t index = 0; index < sensor_count; ++index)
     close_sensor(&sensors[index]);
   if (daemon_mode)
     unlink(PID_FILE);
-  return EXIT_SUCCESS;
+  return exit_status;
 }
