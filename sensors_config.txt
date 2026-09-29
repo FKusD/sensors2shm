@@ -1,5 +1,5 @@
 # The only supported format is: l8cx_spi <spi_bus> <spi_cs> <shm_name>.
 # LPn and SPI_I2C_N are held HIGH at 3.3 V in hardware.
 # NCS uses the custom SPI0 chip selects: GPIO22 for CS0, GPIO23 for CS1.
-l8cx_spi 0 0 vl53l8cx_left
-l8cx_spi 0 1 vl53l8cx_right
+l8cx_spi 0 0 vl53l8cx_right
+l8cx_spi 0 1 vl53l8cx_left
