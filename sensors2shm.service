@@ -1,0 +1,14 @@
+[Unit]
+Description=VL53L8CX SPI shared-memory daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/pi/sensors2shm/background_ranging
+Restart=on-failure
+RestartSec=2
+User=root
+WorkingDirectory=/home/pi/sensors2shm
+
+[Install]
+WantedBy=multi-user.target

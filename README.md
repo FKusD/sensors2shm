@@ -1,156 +1,46 @@
-# Работа с датчиками VL53L1X, VL53L5CX и TCS34725 на Raspberry Pi
+# sensors2shm
 
-Этот проект предназначен для одновременной работы с несколькими датчиками расстояния VL53L1X, VL53L5CX и (в перспективе) TCS34725 на Raspberry Pi. Программа автоматически обнаруживает датчики, инициализирует их, изменяет I2C-адреса при необходимости и сохраняет данные в shared memory для последующего чтения.
+Minimal daemon for two VL53L8CX sensors over SPI. It publishes 4×4 ranging
+frames at 60 Hz into POSIX shared memory; it does not contain I²C, VL53L1X or
+VL53L5CX support.
 
----
+## Hardware
 
-## Возможности
+Both modules share SPI0 MOSI (GPIO10), MISO (GPIO9), SCLK (GPIO11), 3.3 V and
+GND. The modules use separate chip selects configured by:
 
-- Поддержка датчиков VL53L1X (ToF, одиночное измерение)
-- Поддержка датчиков VL53L5CX (ToF, матричное измерение 4x4/8x8)
-- Задел для поддержки TCS34725 (цветовой датчик, пока не реализовано)
-- Автоматическое обнаружение и инициализация датчиков
-- Изменение I2C-адресов для избежания конфликтов
-- Управление питанием датчиков через GPIO (XSHUT)
-- Гибкая конфигурация через текстовый файл
-- Запись данных в shared memory для удобного доступа из других программ (C/Python)
+```ini
+dtoverlay=spi0-2cs,cs0_pin=22,cs1_pin=23
+```
 
----
+| Sensor | NCS | SPI device | shared memory |
+| --- | --- | --- | --- |
+| left | GPIO22 | `/dev/spidev0.0` | `vl53l8cx_left` |
+| right | GPIO23 | `/dev/spidev0.1` | `vl53l8cx_right` |
 
-## Требования
+`LPn` and `SPI_I2C_N` are held HIGH at 3.3 V in hardware. The daemon never
+changes them. SPI runs in mode 3 at 1 MHz by default.
 
-- Raspberry Pi с Linux
-- gcc
-- wiringPi (`sudo apt-get install wiringpi`)
-- Подключённые датчики VL53L1X, VL53L5CX (и/или TCS34725)
-- Доступ к GPIO и I2C (root-права для запуска основной программы)
+## Configuration
 
----
+`sensors_config.txt` accepts only this format:
 
-## Сборка
+```text
+l8cx_spi <spi_bus> <spi_cs> <shm_name>
+```
+
+The default configuration contains both sensors. To diagnose one sensor,
+temporarily comment out the other line and restart the service.
+
+## Build and run
 
 ```bash
 make
+sudo systemctl restart sensors2shm.service
+uv run read_sensors.py --once
 ```
 
----
+The systemd unit starts `background_ranging --daemon` and keeps it running.
+Do not launch a second manual instance while the service is active.
 
-## Конфигурация
-
-Создайте файл `sensors_config.txt` в формате:
-
-```
-тип_датчика пин_xshut i2c_адрес имя_файла
-```
-
-- **тип_датчика**: `l1x` (VL53L1X), `l5cx` (VL53L5CX), `tcs` (TCS34725, пока не реализовано)
-- **пин_xshut**: GPIO-пин для управления питанием датчика (XSHUT)
-- **i2c_адрес**: желаемый I2C-адрес (например, 0x29, 0x30, 0x31)
-- **имя_файла**: имя файла/имя shared memory для хранения данных
-
-**Пример:**
-```
-# Формат: тип_датчика пин_xshut i2c_адрес имя_файла
-l1x 17 0x51 vl53l1x_left
-l5cx 22 0x53 vl53l5cx_left
-tcs 24 0x31 tcs_color_left  # пока не работает
-```
-
-- Строки, начинающиеся с `#`, и пустые строки игнорируются
-
----
-
-## Запуск
-
-### Основная программа (запись данных в shared memory)
-
-```bash
-sudo ./background_ranging
-```
-
-- Требуются root-права для доступа к GPIO и I2C
-- Данные каждого датчика пишутся в отдельный shared memory сегмент (имя — из конфигурации)
-
-### Чтение данных (Python)
-
-```bash
-python3 read_sensors.py
-```
-
-- Можно запускать без root
-- По умолчанию читает данные из shared memory для датчиков, указанных в массиве `sensor_names` внутри скрипта
-- Для изменения списка датчиков — отредактируйте `sensor_names` в `read_sensors.py`
-
----
-
-## Структура данных (shared memory)
-
-Данные каждого датчика хранятся в структуре `SensorData` (C):
-
-```c
-typedef struct {
-    uint32_t timestamp;      // Временная метка
-    uint8_t sensor_type;     // 0=VL53L1X, 1=VL53L5CX, 2=TCS34725
-    uint8_t resolution;      // 1 (одиночный), 16 (4x4), 64 (8x8)
-    uint8_t data_format;     // 0=одиночное, 1=матрица
-    uint8_t reserved;
-    union {
-        struct { uint16_t distance_mm; uint8_t status; uint8_t reserved[5]; } single;
-        struct { uint16_t distances[64]; uint8_t statuses[64]; } matrix;
-    } data;
-} SensorData;
-```
-
-- Для VL53L1X и TCS34725 используется одиночный формат
-- Для VL53L5CX — матричный (4x4 или 8x8)
-
----
-
-## Принцип работы
-
-1. **Инициализация GPIO:** Все XSHUT-пины в LOW (датчики выключены)
-2. **Последовательная активация:** Каждый датчик включается, инициализируется, при необходимости меняет адрес, затем выключается
-3. **Финальная активация:** Все успешно инициализированные датчики включаются одновременно
-4. **Основной цикл:** Данные всех датчиков периодически читаются и пишутся в shared memory
-
----
-
-## Устранение неполадок
-
-- **Датчик не обнаружен:**
-  - Проверьте подключение I2C и питание
-  - Проверьте правильность GPIO XSHUT
-- **Ошибка инициализации:**
-  - Убедитесь, что I2C включён (`sudo raspi-config`)
-  - Проверьте права доступа к `/dev/i2c-1`
-- **Конфликт адресов:**
-  - Убедитесь, что в конфиге разные адреса и разные XSHUT-пины
-- **Shared memory не найден:**
-  - Убедитесь, что `background_ranging` запущен и создал сегменты
-- **Ошибки компиляции:**
-  - Для C-программ может потребоваться `librt` (`sudo apt-get install libc6-dev`)
-
----
-
-## Очистка
-
-```bash
-make clean
-sudo rm -f /dev/shm/vl53l1x_*
-sudo rm -f /dev/shm/vl53l5cx_*
-```
-
----
-
-## Примечания
-
-- Поддержка TCS34725 пока не реализована (выводится предупреждение)
-- Для чтения данных можно использовать как Python, так и C (см. README_sensors.md)
-- Для расширения функционала — см. исходный код и TODO в `background_ranging.c`
-
----
-
-## Авторы и лицензия
-
-- Используются библиотеки STMicroelectronics для работы с VL53L1X и VL53L5CX
-- Проект распространяется на условиях лицензий, указанных в исходных файлах 
+See [README_sensors.md](README_sensors.md) for the shared-memory format.
